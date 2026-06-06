@@ -17,7 +17,7 @@ How to set up, build, test, and extend AudioPulse.
 ## Environment
 
 See [Getting Started → Prerequisites](getting-started.md#prerequisites). In
-short: Go 1.22+, a C toolchain, and (on Linux, for the audio backend) the ALSA
+short: Go 1.25+, a C toolchain, and (on Linux, for the audio backend) the ALSA
 development headers.
 
 ```bash
@@ -34,18 +34,20 @@ go.mod / go.sum               Module definition and checksums
 Makefile                      Build/test/format targets
 
 internal/
+  config/                     Client ID resolution + cache paths (Spotify)
+  auth/                       Spotify OAuth 2.0 PKCE + token cache
+  spotify/                    Spotify Web API wrapper (zmb3/spotify)
+  librespot/                  librespot device supervisor
   deezer/
-    deezer.go                 Deezer API client (Search)
+    deezer.go                 Deezer API client (Search) — guest mode
     deezer_live_test.go       Opt-in live API test (skipped with -short)
   player/
     player_beep.go            Real audio backend            (build: !nosound)
     player_silent.go          Silent simulation backend     (build: nosound)
   ui/
-    model.go                  Model, messages, commands, helpers
-    update.go                 Update (message handling)
-    view.go                   View and layout
-    styles.go                 Lip Gloss theme
-    ui_test.go                Render and interaction tests
+    model.go / update.go / view.go / styles.go   Deezer guest UI
+    spotify_model.go / spotify_update.go / spotify_view.go   Spotify UI
+    *_test.go                 Render and interaction tests
 
 docs/                         This documentation set
 ```

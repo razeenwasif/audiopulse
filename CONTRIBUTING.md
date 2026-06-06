@@ -31,7 +31,7 @@ approach before you invest time.
 
 **Prerequisites**
 
-- Go 1.22 or newer
+- Go 1.25 or newer
 - `git`, `make`, and a C toolchain (`gcc`/`cc`)
 - ALSA development headers for the audio backend:
 

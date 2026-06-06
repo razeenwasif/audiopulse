@@ -20,7 +20,7 @@ This guide takes you from a clean machine to a running AudioPulse.
 
 | Requirement      | Version | Notes                                              |
 | ---------------- | ------- | -------------------------------------------------- |
-| Go               | 1.22+   | <https://go.dev/dl/>                               |
+| Go               | 1.25+   | <https://go.dev/dl/>                               |
 | C toolchain      | any     | `gcc`/`clang`; required by the audio backend (cgo) |
 | ALSA dev headers | —       | Linux only; required to compile the audio backend  |
 | Audio output     | —       | PulseAudio, PipeWire, or ALSA at runtime           |

@@ -5,7 +5,7 @@
 **A Spotify-style music player for your terminal.**
 
 [![CI](https://github.com/razeenwasif/audiopulse/actions/workflows/ci.yml/badge.svg)](https://github.com/razeenwasif/audiopulse/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Status](https://img.shields.io/badge/status-beta-orange)](#project-status)
 
