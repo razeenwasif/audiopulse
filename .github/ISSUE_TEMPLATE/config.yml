@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/razeenwasif/audiopulse/security/advisories/new
+    about: Please report security issues privately — see SECURITY.md, do not open a public issue.
+  - name: Documentation
+    url: https://github.com/razeenwasif/audiopulse/tree/main/docs
+    about: Check the docs/ directory first; open a feature request if something is missing.
