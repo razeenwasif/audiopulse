@@ -86,6 +86,8 @@ Full, platform-by-platform instructions live in
 | Command           | Result                                                        |
 | ----------------- | ------------------------------------------------------------- |
 | `make build`      | Compile with the real audio backend (needs `libasound2-dev`). |
+| `make install`    | Build and install to `~/.local/bin` (run `audiopulse` anywhere). |
+| `make uninstall`  | Remove the installed binary.                                  |
 | `make run`        | Build with audio and launch.                                  |
 | `make silent`     | Compile the no-audio fallback (`-tags nosound`).              |
 | `make run-silent` | Build the silent fallback and launch.                         |

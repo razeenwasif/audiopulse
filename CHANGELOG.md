@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make doctor` target: checks the toolchain and audio stack (Go/cgo, ALSA
   headers, PulseAudio runtime, ALSA→Pulse plugin) and runs a live speaker-open
   test, with targeted fixes for anything missing.
+- `make install` / `make uninstall` targets: install the binary to a `PATH`
+  directory (default `~/.local/bin`, overridable via `PREFIX`) so `audiopulse`
+  can be run from anywhere.
 
 ## [0.1.0] - 2026-06-06
 

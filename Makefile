@@ -1,6 +1,10 @@
 BINARY := audiopulse
 
-.PHONY: build run silent run-silent test vet fmt clean doctor
+# Installation prefix. Override with `make install PREFIX=/usr/local` (may need sudo).
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
+
+.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall
 
 ## build: compile with real audio (needs libasound2-dev)
 build:
@@ -33,6 +37,22 @@ fmt:
 ## doctor: check the toolchain and audio stack
 doctor:
 	@bash scripts/doctor.sh
+
+## install: build with audio and install to $(BINDIR) (default ~/.local/bin)
+install: build
+	@mkdir -p "$(BINDIR)"
+	@install -m 0755 $(BINARY) "$(BINDIR)/$(BINARY)"
+	@echo "Installed $(BINARY) -> $(BINDIR)/$(BINARY)"
+	@case ":$$PATH:" in \
+		*":$(BINDIR):"*) echo "$(BINDIR) is on your PATH — run 'audiopulse' from anywhere." ;; \
+		*) echo "NOTE: $(BINDIR) is not on your PATH. Add it, e.g.:"; \
+		   echo "      echo 'export PATH=\"$(BINDIR):\$$PATH\"' >> ~/.bashrc && source ~/.bashrc" ;; \
+	esac
+
+## uninstall: remove the installed binary
+uninstall:
+	@rm -f "$(BINDIR)/$(BINARY)"
+	@echo "Removed $(BINDIR)/$(BINARY)"
 
 ## clean: remove the built binary
 clean:

@@ -85,6 +85,29 @@ go build -o audiopulse .
 
 The first build downloads Go module dependencies; subsequent builds are cached.
 
+## Installing on your PATH
+
+To run `audiopulse` from any directory, install it to a `bin` directory on your
+`PATH`:
+
+```bash
+make install                       # installs to ~/.local/bin by default
+```
+
+`make install` reports whether the target directory is on your `PATH` and, if
+not, prints the line to add to your shell config. To install elsewhere (system
+wide), override the prefix:
+
+```bash
+sudo make install PREFIX=/usr/local # installs to /usr/local/bin
+```
+
+Remove it again with:
+
+```bash
+make uninstall                      # honour the same PREFIX you installed with
+```
+
 ## The silent build
 
 If you cannot install the ALSA headers, have no audio device, or are running in
