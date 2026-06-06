@@ -1,6 +1,6 @@
 BINARY := audiopulse
 
-.PHONY: build run silent run-silent test vet fmt clean
+.PHONY: build run silent run-silent test vet fmt clean doctor
 
 ## build: compile with real audio (needs libasound2-dev)
 build:
@@ -29,6 +29,10 @@ vet:
 ## fmt: format all Go sources
 fmt:
 	gofmt -w .
+
+## doctor: check the toolchain and audio stack
+doctor:
+	@bash scripts/doctor.sh
 
 ## clean: remove the built binary
 clean:

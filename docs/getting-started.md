@@ -104,8 +104,13 @@ See [ADR-0004](adr/0004-build-tag-fallback-strategy.md) for why this exists.
 ## Verifying your installation
 
 ```bash
+make doctor         # checks the toolchain + audio stack and tests sound output
 make test           # unit + render tests; should report "ok"
 ```
+
+`make doctor` is the fastest way to confirm audio is set up correctly: it
+reports the Go/cgo toolchain, ALSA headers, the PulseAudio runtime, and whether
+the speaker can actually be opened — with a targeted fix for anything missing.
 
 Then launch the app, press `/`, type an artist (e.g. `daft punk`), press
 `Enter`, select a track with `↓`, and press `Enter` to play. You should see the

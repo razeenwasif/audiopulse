@@ -92,6 +92,7 @@ Full, platform-by-platform instructions live in
 | `make test`       | Run unit + render tests (no device required).                 |
 | `make vet`        | Static analysis.                                              |
 | `make fmt`        | Format all Go sources.                                        |
+| `make doctor`     | Check the toolchain and audio stack, and test sound output.   |
 
 ## Keybindings
 

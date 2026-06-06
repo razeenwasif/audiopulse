@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Nothing yet.
+- `make doctor` target: checks the toolchain and audio stack (Go/cgo, ALSA
+  headers, PulseAudio runtime, ALSA→Pulse plugin) and runs a live speaker-open
+  test, with targeted fixes for anything missing.
 
 ## [0.1.0] - 2026-06-06
 
