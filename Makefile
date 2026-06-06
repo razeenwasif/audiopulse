@@ -4,7 +4,7 @@ BINARY := audiopulse
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall
+.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall librespot
 
 ## build: compile with real audio (needs libasound2-dev)
 build:
@@ -33,6 +33,10 @@ vet:
 ## fmt: format all Go sources
 fmt:
 	gofmt -w .
+
+## librespot: build & install the librespot playback backend (one-time, ~10-15 min)
+librespot:
+	cargo install librespot --locked --no-default-features --features "alsa-backend,rustls-tls-webpki-roots"
 
 ## doctor: check the toolchain and audio stack
 doctor:

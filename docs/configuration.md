@@ -15,9 +15,12 @@ the source — and the constants you would change to tune behaviour.
 
 ## Philosophy
 
-There is no configuration file and there are no required environment variables.
-The Deezer endpoints used need no API key. This keeps first-run friction at zero
-and the security surface minimal (see [SECURITY.md](../SECURITY.md)).
+**Deezer guest mode** needs no configuration, no API key, and no login — it runs
+out of the box. **Spotify mode** is opt-in: it requires a public Client ID
+(`SPOTIFY_CLIENT_ID` or `~/.config/audiopulse/config.json`) and caches an OAuth
+token locally. See [ADR-0005](adr/0005-spotify-via-librespot.md),
+[getting-started → Spotify mode](getting-started.md#spotify-mode-full-songs), and
+[SECURITY.md](../SECURITY.md).
 
 ## Build-time configuration
 
@@ -47,13 +50,15 @@ The following are adjustable while the app runs and reset on restart:
 AudioPulse itself reads no custom environment variables. The variables that
 *indirectly* affect it come from its dependencies and the OS:
 
-| Variable          | Consumed by   | Effect                                            |
-| ----------------- | ------------- | ------------------------------------------------- |
-| `TERM`            | terminal libs | Colour and capability detection                   |
-| `NO_COLOR`        | Lip Gloss     | If set, disables ANSI colour output               |
-| `COLORTERM`       | Lip Gloss     | Enables truecolor when set (e.g. `truecolor`)     |
-| `HTTP_PROXY` / `HTTPS_PROXY` | net/http | Routes Deezer requests through a proxy      |
-| `PULSE_SERVER`    | audio stack   | Selects the PulseAudio server (useful under WSL2) |
+| Variable            | Consumed by   | Effect                                            |
+| ------------------- | ------------- | ------------------------------------------------- |
+| `SPOTIFY_CLIENT_ID` | AudioPulse    | Enables Spotify mode (PKCE public Client ID)      |
+| `AUDIOPULSE_GUEST`  | AudioPulse    | If set, forces Deezer guest mode even with a Client ID |
+| `TERM`              | terminal libs | Colour and capability detection                   |
+| `NO_COLOR`          | Lip Gloss     | If set, disables ANSI colour output               |
+| `COLORTERM`         | Lip Gloss     | Enables truecolor when set (e.g. `truecolor`)     |
+| `HTTP_PROXY` / `HTTPS_PROXY` | net/http | Routes API requests through a proxy          |
+| `PULSE_SERVER`      | audio stack   | Selects the PulseAudio server (useful under WSL2) |
 
 > Setting `NO_COLOR=1` yields a monochrome UI, which can help on terminals with
 > poor colour support.

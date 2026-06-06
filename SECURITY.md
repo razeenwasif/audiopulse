@@ -37,28 +37,38 @@ small and intentionally kept that way.
 
 **Data handling**
 
-- AudioPulse stores **no credentials**. The Deezer search endpoints it uses
-  require no API key or login.
-- All network traffic is HTTPS to `api.deezer.com` (metadata/search) and
-  Deezer's preview CDN (audio). No user data is transmitted.
-- No telemetry, analytics, or background network calls are made.
-- Nothing is written to disk at runtime; previews are buffered in memory and
-  discarded.
+- **Deezer guest mode** stores no credentials and requires no login. All traffic
+  is HTTPS to `api.deezer.com` and Deezer's preview CDN; previews are buffered in
+  memory and discarded.
+- **Spotify mode** authenticates with OAuth 2.0 **PKCE** (a public Client ID; no
+  client secret is used or stored). The resulting token is cached at
+  `~/.config/audiopulse/token.json` with `0600` permissions, and librespot's
+  device credentials under `~/.config/audiopulse/librespot/`. These are never
+  logged and are refreshed via the standard OAuth refresh flow.
+- The OAuth redirect is captured by a short-lived server bound to **loopback
+  only** (`127.0.0.1:8888`).
+- No telemetry or analytics. Network traffic is HTTPS to Spotify
+  (`accounts.spotify.com`, `api.spotify.com`) for control/metadata; audio is
+  streamed by librespot directly from Spotify.
 
 **Trust boundaries**
 
-- Untrusted input is the JSON returned by the Deezer API and the audio bytes of
-  previews. These are parsed by the standard library JSON decoder and the
-  `go-mp3`/`beep` decoders respectively. Decode errors are handled and surfaced,
-  not fatal.
+- Untrusted input is the JSON/audio returned by Deezer/Spotify. JSON is parsed by
+  the standard decoder; preview audio by `go-mp3`/`beep`. Decode errors are
+  handled, not fatal.
 - User keystrokes are handled by Bubble Tea and never evaluated as shell
-  commands; AudioPulse spawns no subprocesses.
+  commands.
+- In Spotify mode AudioPulse spawns one subprocess — the **librespot** binary —
+  located on `PATH` or in `~/.cargo/bin`, with arguments fixed by AudioPulse (no
+  user-controlled command strings).
 
 **Known considerations**
 
-- AudioPulse depends on third-party Go modules (Bubble Tea, Lip Gloss, beep,
-  oto, go-mp3). Supply-chain risk is mitigated by pinned versions in `go.mod`/
-  `go.sum` and Go module checksum verification.
+- Third-party Go modules (Bubble Tea, Lip Gloss, beep, oto, go-mp3,
+  zmb3/spotify, x/oauth2) are pinned in `go.mod`/`go.sum` with checksum
+  verification.
+- librespot is an external binary built from source via `cargo install`
+  (`--locked`, pinning its dependency versions). It is not bundled.
 - The audio backend links against the system ALSA library via cgo. The silent
   backend (`-tags nosound`) removes this native dependency entirely.
 

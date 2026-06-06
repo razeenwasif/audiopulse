@@ -85,6 +85,25 @@ else
   note "Skipped (needs ALSA dev headers to build the audio backend)"
 fi
 
+# --- Spotify (optional, for full-song playback) ------------------------------
+printf '\nSpotify (optional — full-song playback)\n'
+if command -v librespot >/dev/null 2>&1 || [ -x "$HOME/.cargo/bin/librespot" ]; then
+  ok "librespot installed"
+else
+  note "librespot not installed — run 'make librespot' for full-song Spotify playback"
+fi
+cfgdir="${XDG_CONFIG_HOME:-$HOME/.config}/audiopulse"
+if [ -n "${SPOTIFY_CLIENT_ID:-}" ] || grep -qs client_id "$cfgdir/config.json" 2>/dev/null; then
+  ok "Spotify Client ID configured"
+else
+  note "No Spotify Client ID — set SPOTIFY_CLIENT_ID or $cfgdir/config.json (see docs/getting-started.md); Deezer guest mode works without it"
+fi
+if [ -f "$cfgdir/token.json" ]; then
+  ok "Spotify token cached (signed in)"
+else
+  note "Not signed in to Spotify yet — first run opens a browser"
+fi
+
 # --- Summary -----------------------------------------------------------------
 printf '\n\033[1mSummary:\033[0m %d ok, %d warning(s), %d failure(s)\n\n' "$pass" "$warn" "$fail"
 [ "$fail" -eq 0 ]

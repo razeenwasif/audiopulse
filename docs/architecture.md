@@ -17,6 +17,15 @@ through it, and the concurrency and rendering models that hold it together.
 - [Error handling](#error-handling)
 - [Extension points](#extension-points)
 
+> **Two modes.** AudioPulse runs in **Spotify mode** (full songs via an embedded
+> librespot device controlled through the Spotify Web API) when a Client ID is
+> configured, and falls back to **Deezer guest mode** (30-second previews, no
+> login) otherwise. This page documents the Deezer/preview core in depth; the
+> Spotify architecture (`internal/auth`, `internal/spotify`, `internal/librespot`
+> and the three-panel `ui.Spotify` model) is described in
+> [ADR-0005](adr/0005-spotify-via-librespot.md). The Elm/Bubble Tea, rendering,
+> and concurrency patterns below apply to both.
+
 ## Overview
 
 AudioPulse is a single-binary terminal application. It follows the

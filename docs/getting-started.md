@@ -108,6 +108,55 @@ Remove it again with:
 make uninstall                      # honour the same PREFIX you installed with
 ```
 
+## Spotify mode (full songs)
+
+By default — with no configuration — AudioPulse runs in **Deezer guest mode**
+(30-second previews, no login). To play **full songs** from your own Spotify
+**Premium** account:
+
+### 1. Install the playback backend (one-time)
+
+AudioPulse plays Spotify audio through an embedded **librespot** device:
+
+```bash
+make librespot      # cargo build, ~10-15 minutes the first time
+```
+
+Requires the Rust toolchain (`cargo`) and the ALSA dev headers (already needed
+for the audio build).
+
+### 2. Create a Spotify app and copy the Client ID
+
+1. Open the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) → **Create app**.
+2. Add this Redirect URI **exactly**: `http://127.0.0.1:8888/callback`.
+3. Copy the **Client ID**. (The Client *Secret* is **not** needed — AudioPulse uses PKCE.)
+
+### 3. Give AudioPulse the Client ID
+
+Either set an environment variable:
+
+```bash
+export SPOTIFY_CLIENT_ID=your_client_id_here
+```
+
+or create `~/.config/audiopulse/config.json`:
+
+```json
+{ "client_id": "your_client_id_here" }
+```
+
+### 4. Run
+
+```bash
+make run
+```
+
+On first run you authorize **twice** in the browser (a one-time step): once for
+AudioPulse's Web API access, and once for the librespot playback device. After
+that, sign-in is remembered at `~/.config/audiopulse/`.
+
+> Force Deezer guest mode anytime with `AUDIOPULSE_GUEST=1 audiopulse`.
+
 ## The silent build
 
 If you cannot install the ALSA headers, have no audio device, or are running in

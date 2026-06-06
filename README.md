@@ -9,35 +9,40 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Status](https://img.shields.io/badge/status-beta-orange)](#project-status)
 
-Search the Deezer catalogue and play track previews — without leaving your shell.
+Play full songs from your Spotify account — without leaving your shell.
 
 </div>
 
 ---
 
 AudioPulse is a terminal user interface (TUI) built with
-[Bubble Tea](https://github.com/charmbracelet/bubbletea). It searches the public
-[Deezer](https://developers.deezer.com/api) catalogue (no API key, no login) and
-streams 30-second previews through your speakers via
-[faiface/beep](https://github.com/faiface/beep).
+[Bubble Tea](https://github.com/charmbracelet/bubbletea), with a Spotify
+desktop-style layout (library · feed · now-playing · player bar).
+
+- **Spotify mode** (Premium): plays **full songs** through an embedded
+  [librespot](https://github.com/librespot-org/librespot) device, controlled via
+  the Spotify Web API. Browse your playlists, liked songs, and queue.
+- **Deezer guest mode** (no login): search the public
+  [Deezer](https://developers.deezer.com/api) catalogue and play 30-second
+  previews via [faiface/beep](https://github.com/faiface/beep) — the automatic
+  fallback when no Spotify Client ID is configured.
 
 ```
- ♫ AudioPulse                                                       powered by Deezer
-╭──────────────────────╮╭──────────────────────────────────────────────────────────╮
-│  LIBRARY             ││   get lucky                                                │
-│                      ││ ────────────────────────────────────────────────────────  │
-│    Search            ││ 50 results                                                 │
-│  ▌ Results           ││ ♪ Get Lucky — Daft Punk feat. Pharrell Williams     4:08   │
-│                      ││ ▶ One More Time — Daft Punk                         5:20   │
-│  NOW PLAYING         ││   Instant Crush — Daft Punk                         5:37   │
-│  Get Lucky           ││   Lose Yourself to Dance — Daft Punk                5:53   │
-╰──────────────────────╯╰──────────────────────────────────────────────────────────╯
-╭──────────────────────────────────────────────────────────────────────────────────╮
-│  ▶  Get Lucky  —  Daft Punk feat. Pharrell Williams                                │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  0:12 / 0:30   │
-│  vol ━━━━━━━━────   autoplay on                                                     │
-╰──────────────────────────────────────────────────────────────────────────────────╯
-  ↑↓/jk move  •  enter play  •  space pause  •  n/b next/prev  •  +/- vol  •  q quit
+ ♫ AudioPulse                                                                       Razeen · Spotify
+╭──────────────────────────╮╭──────────────────────────────────────╮╭────────────────────────────────╮
+│  LIBRARY                 ││ Chill Vibes                          ││ NOW PLAYING                    │
+│   ♥ Liked Songs          ││ 24 tracks                            ││ ╭────────────────────────────╮ │
+│   ◷ Recently Played      ││                                      ││ │             ♫              │ │
+│   ▸ Discover Weekly      ││   Midnight City — M83          4:04  ││ ╰────────────────────────────╯ │
+│  ▌▸ Chill Vibes          ││ ▶ Instant Crush — Daft Punk    5:37  ││ Instant Crush                  │
+│   ▸ Focus Flow           ││   Redbone — Childish Gambino   5:27  ││ Daft Punk, Julian Casablancas  │
+│                          ││   Nights — Frank Ocean         5:07  ││ ── Up Next ──                  │
+╰──────────────────────────╯╰──────────────────────────────────────╯╰────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│  ▶  Instant Crush  —  Daft Punk, Julian Casablancas                                       🔀 🔁    │
+│  1:12 / 5:37 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  🔊 65%       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+  tab panel  •  ↑↓ move  •  enter open/play  •  space pause  •  n/b next/prev  •  ←→ seek  •  +/- vol
 ```
 
 ## Contents
@@ -53,22 +58,30 @@ streams 30-second previews through your speakers via
 
 ## Features
 
-- 🔎 **Live search** across Deezer — songs, artists, albums.
-- ▶️ **Real audio playback** of 30-second previews: play, pause, stop.
-- ⏭️ **Autoplay** — rolls into the next result when a track ends.
-- 🔊 **Volume control**, live progress bar, and a now-playing panel.
+- 🎧 **Full-song playback** from your Spotify Premium account via embedded librespot.
+- 🗂️ **Desktop-style layout** — library, track feed, now-playing, and a player bar.
+- ▶️ **Full transport control** — play/pause, next/prev, seek, volume, shuffle, repeat.
+- 📚 **Your library** — playlists, Liked Songs, Recently Played, and live queue.
 - 🟢 **Spotify-green** accent theme throughout.
-- 🧰 **Runs anywhere** — a silent fallback build needs no audio device at all.
-- 🔐 **Zero credentials** — no API key, no login, no data stored.
+- 🆓 **Deezer guest mode** — no-login preview playback when Spotify isn't configured.
+- 🔐 **PKCE OAuth** — public Client ID only, token cached locally with `0600` perms.
 
 ## Quick start
 
-```bash
-# 1. Install the audio backend's build dependency (one time)
-sudo apt-get install -y libasound2-dev      # Debian/Ubuntu
+**Deezer guest mode** (no account, no setup):
 
-# 2. Build and run
+```bash
+sudo apt-get install -y libasound2-dev      # one-time (Debian/Ubuntu)
 make run
+```
+
+**Spotify mode** (full songs, Premium): install the playback backend, set your
+Client ID, and run — see **[docs/getting-started.md → Spotify mode](docs/getting-started.md#spotify-mode-full-songs)**:
+
+```bash
+make librespot                              # one-time (~10-15 min Rust build)
+export SPOTIFY_CLIENT_ID=your_client_id     # from developer.spotify.com
+make run                                    # authorizes in your browser, once
 ```
 
 No audio device or can't install the headers? Run the silent build, which has
@@ -86,6 +99,7 @@ Full, platform-by-platform instructions live in
 | Command           | Result                                                        |
 | ----------------- | ------------------------------------------------------------- |
 | `make build`      | Compile with the real audio backend (needs `libasound2-dev`). |
+| `make librespot`  | Build & install the librespot backend for Spotify full-song playback. |
 | `make install`    | Build and install to `~/.local/bin` (run `audiopulse` anywhere). |
 | `make uninstall`  | Remove the installed binary.                                  |
 | `make run`        | Build with audio and launch.                                  |
@@ -98,18 +112,29 @@ Full, platform-by-platform instructions live in
 
 ## Keybindings
 
+**Spotify mode**
+
+| Key             | Action                                       |
+| --------------- | -------------------------------------------- |
+| `tab`           | Switch between the library and track panels  |
+| `↑`/`↓` `j`/`k` | Move selection · `g`/`G` jump to top/bottom  |
+| `enter`         | (library) open · (tracks) play full song     |
+| `space` / `p`   | Pause / resume                               |
+| `n` / `b`       | Next / previous track                        |
+| `←` / `→`       | Seek −/+ 5s                                  |
+| `+` / `-`       | Volume up / down                             |
+| `s` / `r`       | Toggle shuffle / cycle repeat                |
+| `q` / `ctrl+c`  | Quit                                         |
+
+**Deezer guest mode**
+
 | Key             | Action                                  |
 | --------------- | --------------------------------------- |
 | `/`             | Focus the search box                    |
 | `enter`         | (search) run search · (list) play       |
 | `esc` / `tab`   | Toggle between search and results       |
-| `↑`/`↓` `j`/`k` | Move selection                          |
-| `space` / `p`   | Pause / resume                          |
-| `s`             | Stop                                    |
-| `n` / `b`       | Next / previous track                   |
-| `+` / `-`       | Volume up / down                        |
-| `a`             | Toggle autoplay                         |
-| `g` / `G`       | Jump to top / bottom of results         |
+| `space` / `p`   | Pause / resume · `s` stop · `a` autoplay |
+| `n` / `b`       | Next / previous · `+`/`-` volume         |
 | `q` / `ctrl+c`  | Quit                                    |
 
 ## Documentation

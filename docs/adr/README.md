@@ -17,6 +17,7 @@ history.
 | [0002](0002-deezer-as-data-source.md)            | Deezer as the catalogue data source     | Accepted |
 | [0003](0003-beep-for-audio-playback.md)          | `faiface/beep` for audio playback       | Accepted |
 | [0004](0004-build-tag-fallback-strategy.md)      | Build-tag silent-audio fallback         | Accepted |
+| [0005](0005-spotify-via-librespot.md)            | Spotify full-song playback via librespot| Accepted |
 
 ## Statuses
 
