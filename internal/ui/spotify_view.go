@@ -85,14 +85,27 @@ func threeCol(w int, left, center, right string) string {
 
 func (m Spotify) renderLibrary() string {
 	box := panelBox(m.focus == panelLibrary, 1, 2)
-	sw, sh, tw, _ := panelDims(box, spotifySidebarWidth, m.middleHeight())
+	sw, sh, tw, th := panelDims(box, spotifySidebarWidth, m.middleHeight())
 
 	header := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Your Library")
 	lines := []string{header, ""}
-	for i, it := range m.lib {
-		lines = append(lines, m.libRow(it, i, tw))
+
+	start, end := trackWindow(m.libCursor, len(m.lib), m.libVisible())
+	for i := start; i < end; i++ {
+		lines = append(lines, m.libRow(m.lib[i], i, tw))
 	}
-	return box.Width(sw).Height(sh).Render(strings.Join(lines, "\n"))
+	body := clipLines(strings.Join(lines, "\n"), th)
+	return box.Width(sw).Height(sh).Render(body)
+}
+
+// libVisible is how many two-line library entries fit (after the header+blank).
+func (m Spotify) libVisible() int {
+	_, _, _, th := panelDims(panelBox(false, 1, 2), spotifySidebarWidth, m.middleHeight())
+	v := (th - 2) / 2
+	if v < 1 {
+		v = 1
+	}
+	return v
 }
 
 // libRow renders a two-line library entry: a colored thumbnail block beside a
@@ -179,7 +192,7 @@ func (m Spotify) renderCenter(outerWidth int) string {
 	list := m.renderTrackList(tw, listH)
 
 	body := lipgloss.JoinVertical(lipgloss.Left, chips, titleLine, cols, "", list)
-	return box.Width(sw).Height(sh).Render(body)
+	return box.Width(sw).Height(sh).Render(clipLines(body, th))
 }
 
 func (m Spotify) renderChips() string {
@@ -251,7 +264,7 @@ func (m Spotify) renderTrackList(w, h int) string {
 
 func (m Spotify) renderRight() string {
 	box := panelBox(false, 0, 1)
-	sw, sh, tw, _ := panelDims(box, spotifyRightWidth, m.middleHeight())
+	sw, sh, tw, th := panelDims(box, spotifyRightWidth, m.middleHeight())
 
 	var b strings.Builder
 	b.WriteString(lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Now Playing"))
@@ -293,7 +306,7 @@ func (m Spotify) renderRight() string {
 			b.WriteString("\n")
 		}
 	}
-	return box.Width(sw).Height(sh).Render(b.String())
+	return box.Width(sw).Height(sh).Render(clipLines(b.String(), th))
 }
 
 // --- player bar --------------------------------------------------------------
@@ -411,6 +424,19 @@ func (m Spotify) centerGeom() (outerW, listH int) {
 		listH = 1
 	}
 	return outerW, listH
+}
+
+// clipLines keeps at most the first n lines of s, so a panel's content can never
+// overflow its height and push the rest of the layout off-screen.
+func clipLines(s string, n int) string {
+	if n < 0 {
+		n = 0
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // indentBlock prefixes every line of s with n spaces (used to center art).

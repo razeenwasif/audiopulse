@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The library list is now scroll-windowed and every panel is height-clipped, so a
+  long playlist list no longer overflows and pushes the player bar and help line
+  off-screen (which had hidden the shuffle/repeat feedback and key hints).
+
 ### Added
 - **Shuffle / repeat shortcuts with feedback** — `s` toggles shuffle, `r` toggles
   loop-all (repeat context), and `R` toggles loop-one (repeat track). The player
