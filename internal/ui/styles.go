@@ -1,6 +1,11 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"os"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Spotify-inspired palette.
 var (
@@ -13,6 +18,39 @@ var (
 	colorPanel    = lipgloss.Color("#181818")
 	colorErr      = lipgloss.Color("#F15E6C")
 )
+
+// keepTransparent leaves the terminal's background transparency intact when set
+// (AUDIOPULSE_TRANSPARENT=1). By default AudioPulse paints an opaque backdrop so
+// the player is readable over translucent/acrylic terminals.
+var keepTransparent = os.Getenv("AUDIOPULSE_TRANSPARENT") != ""
+
+// opaqueBGCode is the 24-bit SGR for the app background (#121212 = 18,18,18).
+const opaqueBGCode = "\x1b[48;2;18;18;18m"
+
+// fillBG forces every cell of the rendered frame to carry an explicit background
+// color. Terminals (e.g. Windows Terminal) render cells with an explicit
+// background opaquely, so this removes see-through transparency while the player
+// runs — the effect is undone on quit when the alt-screen is restored.
+//
+// It re-establishes the background after every reset (so inner styles can't
+// punch transparent holes) and pads each line to the full width.
+func fillBG(frame string, w, h int) string {
+	if keepTransparent {
+		return frame
+	}
+	lines := strings.Split(frame, "\n")
+	for len(lines) < h {
+		lines = append(lines, "")
+	}
+	for i := range lines {
+		ln := strings.ReplaceAll(lines[i], "\x1b[0m", "\x1b[0m"+opaqueBGCode)
+		if pad := w - lipgloss.Width(ln); pad > 0 {
+			ln += strings.Repeat(" ", pad)
+		}
+		lines[i] = opaqueBGCode + ln + "\x1b[0m"
+	}
+	return strings.Join(lines, "\n")
+}
 
 type styles struct {
 	app        lipgloss.Style

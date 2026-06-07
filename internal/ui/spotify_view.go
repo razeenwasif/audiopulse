@@ -36,12 +36,13 @@ func (m Spotify) View() string {
 	}
 	middle := lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 
-	return lipgloss.JoinVertical(lipgloss.Left,
+	frame := lipgloss.JoinVertical(lipgloss.Left,
 		m.renderSpotifyTitle(),
 		middle,
 		m.renderPlayerBar(),
 		m.renderSpotifyHelp(),
 	)
+	return fillBG(frame, m.width, m.height)
 }
 
 func (m Spotify) renderSpotifyTitle() string {

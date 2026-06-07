@@ -51,12 +51,13 @@ func (m Model) View() string {
 		return m.st.errText.Render("AudioPulse needs a terminal at least 64×18.\nResize and try again. (ctrl+c to quit)")
 	}
 	middle := lipgloss.JoinHorizontal(lipgloss.Top, m.renderSidebar(), m.renderMain())
-	return lipgloss.JoinVertical(lipgloss.Left,
+	frame := lipgloss.JoinVertical(lipgloss.Left,
 		m.renderTitle(),
 		middle,
 		m.renderNowPlaying(),
 		m.renderHelp(),
 	)
+	return fillBG(frame, m.width, m.height)
 }
 
 func (m Model) renderTitle() string {

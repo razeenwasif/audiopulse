@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cell aspect ratio (auto-detected from pixel size, overridable with
   `AUDIOPULSE_CELL_ASPECT`).
 - **Spotify search** — press `/` to search the catalogue and play results.
+- **Opaque background** by default so the player is readable over translucent /
+  acrylic terminals; set `AUDIOPULSE_TRANSPARENT=1` to keep transparency.
 - Deezer preview playback is retained as an automatic **no-login guest mode**.
 - `make doctor` now also reports librespot, Client ID, and sign-in status.
 - `make install` / `make uninstall` targets: install the binary to a `PATH`
