@@ -22,7 +22,7 @@ const (
 	panelSearch
 )
 
-const spotifySidebarWidth = 28
+const spotifySidebarWidth = 32
 const spotifyRightWidth = 34
 
 // libKind distinguishes special library entries from user playlists.

@@ -85,15 +85,19 @@ relevant constants:
 
 The colour palette lives in `internal/ui/styles.go`. The accent is Spotify green:
 
-| Token         | Value     | Used for                          |
-| ------------- | --------- | --------------------------------- |
-| `colorAccent` | `#1DB954` | Panel borders, markers, progress  |
-| `colorAccentHi` | `#1ED760` | Highlights, selected text        |
-| `colorText`   | `#FFFFFF` | Primary text                      |
-| `colorMuted`  | `#B3B3B3` | Secondary text                    |
-| `colorFaint`  | `#535353` | Tertiary text, empty bar segments |
-| `colorErr`    | `#F15E6C` | Error messages                    |
+| Token           | Value     | Used for                                       |
+| --------------- | --------- | ---------------------------------------------- |
+| `colorAccent`   | `#1DB954` | Accent: focused border, progress, play button  |
+| `colorAccentHi` | `#1ED760` | Highlights, selected text, active shuffle/repeat |
+| `colorText`     | `#FFFFFF` | Primary text                                   |
+| `colorMuted`    | `#B3B3B3` | Secondary text                                 |
+| `colorFaint`    | `#535353` | Tertiary text, empty bar segments              |
+| `colorCard`     | `#1F1F1F` | Search pill / chip backgrounds                 |
+| `colorBorder`   | `#2A2A2A` | Subtle panel border (unfocused)                |
+| `colorErr`      | `#F15E6C` | Error messages                                 |
 
-To re-theme, change these constants and rebuild. Because all styles derive from
-this single palette, an accent change propagates everywhere (borders, the
-progress bar, selection markers) consistently.
+In Spotify mode the theme follows the desktop client: borders are the subtle
+`colorBorder` and turn `colorAccent` (green) only on the **focused** panel; green
+is otherwise reserved as an accent for active state (see
+[ADR-0006](adr/0006-spotify-desktop-ui.md)). To re-theme, change these constants
+and rebuild.

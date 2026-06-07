@@ -28,21 +28,21 @@ desktop-style layout (library · feed · now-playing · player bar).
   fallback when no Spotify Client ID is configured.
 
 ```
- ♫ AudioPulse                                                                       Razeen · Spotify
-╭──────────────────────────╮╭──────────────────────────────────────╮╭────────────────────────────────╮
-│  LIBRARY                 ││ Chill Vibes                          ││ NOW PLAYING                    │
-│   ♥ Liked Songs          ││ 24 tracks                            ││ ╭────────────────────────────╮ │
-│   ◷ Recently Played      ││                                      ││ │             ♫              │ │
-│   ▸ Discover Weekly      ││   Midnight City — M83          4:04  ││ ╰────────────────────────────╯ │
-│  ▌▸ Chill Vibes          ││ ▶ Instant Crush — Daft Punk    5:37  ││ Instant Crush                  │
-│   ▸ Focus Flow           ││   Redbone — Childish Gambino   5:27  ││ Daft Punk, Julian Casablancas  │
-│                          ││   Nights — Frank Ocean         5:07  ││ ── Up Next ──                  │
-╰──────────────────────────╯╰──────────────────────────────────────╯╰────────────────────────────────╯
+ ⌂  ♫ AudioPulse                🔎  What do you want to play?                          Razeen ▾
+╭──────────────────────────╮╭──────────────────────────────────╮╭────────────────────────────────╮
+│  Your Library            ││  Music   Podcasts                ││ Now Playing                    │
+│                          ││ Chill Vibes                      ││     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          │
+│  ██  Liked Songs         ││ 24 tracks                     ⏱  ││     ▀▀▀ album art ▀▀▀          │
+│  ██  Playlist            ││                                  ││     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          │
+│ ▌██  Chill Vibes         ││  1 Midnight City — M83    4:04   ││ Instant Crush                  │
+│ ▌██  Playlist • 24 songs ││ ♪ Instant Crush — …       5:37   ││ Daft Punk                      │
+│  ██  Focus Flow          ││  3 Redbone — Childish G.  5:27   ││ ── Up Next ──                  │
+╰──────────────────────────╯╰──────────────────────────────────╯╰────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│  ▶  Instant Crush  —  Daft Punk, Julian Casablancas                                       🔀 🔁    │
-│  1:12 / 5:37 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  🔊 65%       │
+│  Instant Crush — Daft Punk          🔀   ◀◀    ❚❚    ▶▶   🔁                            🔊 65%    │
+│  1:12 ━━━━━━━━━━━━━━━━━━━━━━━━●──────────────────────────────────────────────────────────────  5:37 │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-  tab panel  •  ↑↓ move  •  enter open/play  •  space pause  •  n/b next/prev  •  ←→ seek  •  +/- vol
+  tab panel  •  ↑↓ move  •  enter open/play  •  space pause  •  n/b next/prev  •  ←→ seek  •  / search
 ```
 
 ## Contents

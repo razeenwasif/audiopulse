@@ -16,8 +16,29 @@ var (
 	colorFaint    = lipgloss.Color("#535353")
 	colorBg       = lipgloss.Color("#121212")
 	colorPanel    = lipgloss.Color("#181818")
+	colorCard     = lipgloss.Color("#1F1F1F") // selected/hover row background
+	colorBorder   = lipgloss.Color("#2A2A2A") // subtle panel border (unfocused)
+	colorBlack    = lipgloss.Color("#000000")
 	colorErr      = lipgloss.Color("#F15E6C")
 )
+
+// thumbPalette gives library "thumbnails" varied, Spotify-like colors.
+var thumbPalette = []lipgloss.Color{
+	"#E13300", "#7358FF", "#1DB954", "#E8115B", "#509BF5", "#FF6437", "#BC5900", "#8C67AC",
+}
+
+// panelBox returns a rounded panel whose border is green when focused and a
+// subtle gray otherwise — matching Spotify's "highlight the active area" look.
+func panelBox(focused bool, padV, padH int) lipgloss.Style {
+	c := colorBorder
+	if focused {
+		c = colorAccent
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(c).
+		Padding(padV, padH)
+}
 
 // keepTransparent leaves the terminal's background transparency intact when set
 // (AUDIOPULSE_TRANSPARENT=1). By default AudioPulse paints an opaque backdrop so

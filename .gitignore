@@ -1,3 +1,6 @@
 /audiopulse
 /audiopulse-*
 *.deb
+
+# Reference screenshots (e.g. the Spotify desktop image) — not part of the product
+assets/Screenshot*.png

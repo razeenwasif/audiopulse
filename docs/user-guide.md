@@ -2,7 +2,45 @@
 
 A complete tour of AudioPulse's interface and controls.
 
-## Contents
+> AudioPulse has two modes. **Spotify mode** (when a Client ID is configured)
+> shows the desktop-style interface described just below. **Deezer guest mode**
+> (no login) shows the simpler search/preview interface documented in the rest of
+> this guide. See [Getting Started → Spotify mode](getting-started.md#spotify-mode-full-songs).
+
+## Spotify mode interface
+
+```
+ ⌂  ♫ AudioPulse            🔎  What do you want to play?            Razeen ▾   ← top bar
+╭ Your Library ─────╮╭ Music  Podcasts ───────────╮╭ Now Playing ──────────╮
+│  ██  Liked Songs  ││ Chill Vibes                ││   ▀▀ album art ▀▀      │
+│  ██  Playlist     ││ 1 Midnight City — M83 4:04 ││ Instant Crush         │
+│ ▌██  Chill Vibes  ││ ♪ Instant Crush — …   5:37 ││ Daft Punk             │
+╰───────────────────╯╰────────────────────────────╯╰── Up Next ────────────╯
+╭ Instant Crush — Daft Punk   🔀  ◀◀  ❚❚  ▶▶  🔁                  🔊 65% ────╮
+│ 1:12 ━━━━━━━━●──────────────────────────────────────────────────────  5:37 │
+╰────────────────────────────────────────────────────────────────────────────╯
+```
+
+- **Top bar** — brand, a centered search field (press `/` to focus it), and your
+  account.
+- **Your Library** (left) — Liked Songs, Recently Played, and your playlists,
+  each with a colored thumbnail, title, and subtitle. The focused panel has a
+  green border.
+- **Feed** (center) — filter chips, the selected source's title, and a numbered
+  track table. The playing track is marked `♪`; the selected row is green.
+- **Now Playing** (right) — album art, track/artist/album, and the up-next queue.
+- **Player bar** (bottom) — the current track, centered transport controls
+  (shuffle · prev · play/pause · next · repeat) with a green play button, and a
+  full-width progress bar with volume.
+
+**Controls:** `tab` switches the focused panel; `↑↓`/`j`/`k` move; `enter` opens
+a library entry or plays the selected track; `space` play/pause; `n`/`b`
+next/prev; `←`/`→` seek; `+`/`-` volume; `s`/`r` shuffle/repeat; `/` search;
+`q` quit. **Mouse:** wheel scrolls the panel under the pointer; click a library
+entry to open it; click a track to play it; click or drag the progress bar to
+seek; click the play/pause area to toggle.
+
+## Contents (Deezer guest mode)
 
 - [Launching](#launching)
 - [The interface](#the-interface)

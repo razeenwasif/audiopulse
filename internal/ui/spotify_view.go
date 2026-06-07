@@ -8,22 +8,21 @@ import (
 )
 
 const (
-	spotifyTitleHeight  = 1
+	spotifyTopHeight    = 1
 	spotifyPlayerHeight = 4 // 2 content lines + rounded border
 	spotifyHelpHeight   = 1
 )
 
 func (m Spotify) middleHeight() int {
-	return m.height - spotifyTitleHeight - spotifyPlayerHeight - spotifyHelpHeight
+	return m.height - spotifyTopHeight - spotifyPlayerHeight - spotifyHelpHeight
 }
 
-// View renders the Spotify UI: title, three panels, player bar, help.
+// View renders the Spotify UI: top bar, three panels, player bar, help.
 func (m Spotify) View() string {
 	if m.width < 88 || m.height < 20 {
 		return m.st.errText.Render("AudioPulse needs a terminal at least 88×20 for the Spotify layout.\nResize and try again. (ctrl+c to quit)")
 	}
 
-	// Decide which panels fit. The right panel is dropped on narrower screens.
 	showRight := m.width >= 112
 	centerWidth := m.width - spotifySidebarWidth
 	if showRight {
@@ -37,7 +36,7 @@ func (m Spotify) View() string {
 	middle := lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 
 	frame := lipgloss.JoinVertical(lipgloss.Left,
-		m.renderSpotifyTitle(),
+		m.renderTopBar(),
 		middle,
 		m.renderPlayerBar(),
 		m.renderSpotifyHelp(),
@@ -45,88 +44,170 @@ func (m Spotify) View() string {
 	return fillBG(frame, m.width, m.height)
 }
 
-func (m Spotify) renderSpotifyTitle() string {
-	left := m.st.title.Render("♫ AudioPulse")
-	right := lipgloss.NewStyle().Foreground(colorMuted).Render(m.user + " · Spotify")
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
-	if gap < 1 {
-		gap = 1
+// --- top bar -----------------------------------------------------------------
+
+func (m Spotify) renderTopBar() string {
+	brand := m.st.title.Render("♫ AudioPulse")
+	left := " " + lipgloss.NewStyle().Foreground(colorText).Render("⌂") + "  " + brand
+
+	pillW := m.width / 3
+	pillW = clamp(pillW, 26, 56)
+	pillStyle := lipgloss.NewStyle().Background(colorCard).Width(pillW).Padding(0, 1)
+	var content string
+	if m.focus == panelSearch {
+		m.search.Width = pillW - 4
+		content = m.search.View()
+	} else {
+		content = lipgloss.NewStyle().Background(colorCard).Foreground(colorMuted).Render("🔎  What do you want to play?")
 	}
-	return " " + left + strings.Repeat(" ", gap) + right + " "
+	pill := pillStyle.Render(content)
+
+	right := lipgloss.NewStyle().Foreground(colorMuted).Render(m.user+" ▾") + " "
+	return threeCol(m.width, left, pill, right)
 }
+
+// threeCol lays out left/center/right with center horizontally centered.
+func threeCol(w int, left, center, right string) string {
+	lw, cw, rw := lipgloss.Width(left), lipgloss.Width(center), lipgloss.Width(right)
+	centerStart := (w - cw) / 2
+	gapL := centerStart - lw
+	if gapL < 1 {
+		gapL = 1
+	}
+	gapR := w - lw - gapL - cw - rw
+	if gapR < 1 {
+		gapR = 1
+	}
+	return left + strings.Repeat(" ", gapL) + center + strings.Repeat(" ", gapR) + right
+}
+
+// --- library -----------------------------------------------------------------
 
 func (m Spotify) renderLibrary() string {
-	sw, sh, tw, _ := panelDims(m.st.sidebar, spotifySidebarWidth, m.middleHeight())
+	box := panelBox(m.focus == panelLibrary, 1, 2)
+	sw, sh, tw, _ := panelDims(box, spotifySidebarWidth, m.middleHeight())
 
-	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Foreground(colorFaint).Bold(true).Render("LIBRARY"))
-	b.WriteString("\n\n")
-
+	header := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Your Library")
+	lines := []string{header, ""}
 	for i, it := range m.lib {
-		icon := "▸"
-		switch it.kind {
-		case libLiked:
-			icon = "♥"
-		case libRecent:
-			icon = "◷"
-		}
-		label := truncate(it.name, tw-2)
-		line := icon + " " + label
-		if i == m.libCursor && m.focus == panelLibrary {
-			line = m.st.rowSel.Render("▌" + icon + " " + label)
-		} else if i == m.libCursor {
-			line = m.st.rowTitle.Render(" " + icon + " " + label)
-		} else {
-			line = m.st.rowArtist.Render(" " + icon + " " + label)
-		}
-		b.WriteString(truncate(line, tw))
-		b.WriteString("\n")
+		lines = append(lines, m.libRow(it, i, tw))
 	}
-	return m.st.sidebar.Width(sw).Height(sh).Render(b.String())
+	return box.Width(sw).Height(sh).Render(strings.Join(lines, "\n"))
 }
 
-func (m Spotify) renderCenter(outerWidth int) string {
-	sw, sh, tw, th := panelDims(m.st.main, outerWidth, m.middleHeight())
+// libRow renders a two-line library entry: a colored thumbnail block beside a
+// title and subtitle.
+func (m Spotify) libRow(it libItem, idx, tw int) string {
+	selected := idx == m.libCursor && m.focus == panelLibrary
+	playing := m.playingFromLib(it)
 
-	var headerLine string
-	if m.focus == panelSearch {
-		m.search.Width = tw - 4
-		headerLine = m.search.View()
-	} else {
-		header := m.source.title
-		if header == "" {
-			header = "Tracks"
-		}
-		headerLine = m.st.title.Render(truncate(header, tw))
+	thumb := lipgloss.NewStyle().Foreground(m.thumbColor(it, idx)).Render("██\n██")
+
+	marker := " \n "
+	titleStyle := m.st.rowTitle
+	switch {
+	case selected:
+		marker = m.st.rowSel.Render("▌") + "\n" + m.st.rowSel.Render("▌")
+		titleStyle = m.st.rowSel
+	case playing:
+		titleStyle = m.st.barFill
 	}
-	sub := m.st.rowMuted.Render(fmt.Sprintf("%d tracks", len(m.tracks)))
+
+	textW := tw - 6
+	title := titleStyle.Render(truncate(it.name, textW))
+	sub := m.st.rowMuted.Render(truncate(librarySubtitle(it), textW))
+	text := lipgloss.JoinVertical(lipgloss.Left, title, sub)
+	return lipgloss.JoinHorizontal(lipgloss.Top, marker, " ", thumb, "  ", text)
+}
+
+func (m Spotify) playingFromLib(it libItem) bool {
+	return it.kind == libPlaylist && it.plURI != "" && m.source.contextURI == it.plURI && m.state != nil && m.state.Playing
+}
+
+func (m Spotify) thumbColor(it libItem, idx int) lipgloss.Color {
+	switch it.kind {
+	case libLiked:
+		return lipgloss.Color("#7358FF")
+	case libRecent:
+		return lipgloss.Color("#509BF5")
+	default:
+		return thumbPalette[idx%len(thumbPalette)]
+	}
+}
+
+func librarySubtitle(it libItem) string {
+	switch it.kind {
+	case libLiked:
+		return "Playlist"
+	case libRecent:
+		return "Played recently"
+	default:
+		if it.count > 0 {
+			return fmt.Sprintf("Playlist • %d songs", it.count)
+		}
+		return "Playlist"
+	}
+}
+
+// --- center ------------------------------------------------------------------
+
+func (m Spotify) renderCenter(outerWidth int) string {
+	box := panelBox(m.focus == panelTracks, 0, 1)
+	sw, sh, tw, th := panelDims(box, outerWidth, m.middleHeight())
+
+	chips := m.renderChips()
+
+	title := m.source.title
+	if title == "" {
+		title = "Browse"
+	}
+	titleLine := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(truncate(title, tw))
+
+	sub := fmt.Sprintf("%d tracks", len(m.tracks))
 	if m.loading {
-		sub = m.st.rowArtist.Render("Loading…")
+		sub = "Loading…"
 	}
 	if m.err != nil {
-		sub = m.st.errText.Render(truncate("⚠ "+m.err.Error(), tw))
+		sub = "⚠ " + m.err.Error()
 	}
+	cols := m.columnsHeader(tw, m.st.rowMuted.Render(truncate(sub, tw)))
 
-	listH := th - 3
+	listH := th - 4 // chips, title, columns, blank
 	if listH < 1 {
 		listH = 1
 	}
 	list := m.renderTrackList(tw, listH)
 
-	body := lipgloss.JoinVertical(lipgloss.Left, headerLine, sub, "", list)
-	return m.st.main.Width(sw).Height(sh).Render(body)
+	body := lipgloss.JoinVertical(lipgloss.Left, chips, titleLine, cols, "", list)
+	return box.Width(sw).Height(sh).Render(body)
+}
+
+func (m Spotify) renderChips() string {
+	sel := lipgloss.NewStyle().Background(colorAccent).Foreground(colorBlack).Bold(true).Padding(0, 1)
+	un := lipgloss.NewStyle().Background(colorCard).Foreground(colorText).Padding(0, 1)
+	return sel.Render("Music") + " " + un.Render("Podcasts")
+}
+
+func (m Spotify) columnsHeader(tw int, leftLabel string) string {
+	right := m.st.rowMuted.Render("⏱")
+	gap := tw - lipgloss.Width(leftLabel) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return leftLabel + strings.Repeat(" ", gap) + right
 }
 
 func (m Spotify) renderTrackList(w, h int) string {
 	if len(m.tracks) == 0 {
-		return lipgloss.NewStyle().Height(h).Foreground(colorFaint).
-			Render("No tracks. Pick something on the left and press Enter.")
+		hint := "Pick something on the left and press Enter."
+		return lipgloss.NewStyle().Height(h).Foreground(colorFaint).Render(hint)
 	}
 
 	start, end := trackWindow(m.trackCursor, len(m.tracks), h)
 
 	durW := 6
-	textW := w - durW - 3
+	numW := 3
+	textW := w - durW - numW - 2
 	if textW < 6 {
 		textW = 6
 	}
@@ -142,22 +223,23 @@ func (m Spotify) renderTrackList(w, h int) string {
 		text := fmt.Sprintf("%s — %s", t.Title, t.Artist)
 		dur := fmtDur(t.Duration)
 
-		var marker, body, durCol string
+		num := fmt.Sprintf("%2d ", i+1)
+		var body, durCol string
 		switch {
 		case i == m.trackCursor && m.focus == panelTracks:
-			marker = m.st.rowSel.Render("▶ ")
+			num = m.st.rowSel.Render(fmt.Sprintf("%2d ", i+1))
 			body = m.st.rowSel.Render(padRight(truncate(text, textW), textW))
 			durCol = m.st.rowSel.Render(dur)
 		case string(t.ID) != "" && string(t.ID) == nowID:
-			marker = m.st.barFill.Render("♪ ")
+			num = m.st.barFill.Render(" ♪ ")
 			body = m.st.barFill.Render(padRight(truncate(text, textW), textW))
 			durCol = m.st.rowMuted.Render(dur)
 		default:
-			marker = "  "
+			num = m.st.rowMuted.Render(num)
 			body = m.st.rowTitle.Render(padRight(truncate(text, textW), textW))
 			durCol = m.st.rowMuted.Render(dur)
 		}
-		b.WriteString(marker + body + " " + durCol)
+		b.WriteString(num + body + " " + durCol)
 		if i < end-1 {
 			b.WriteByte('\n')
 		}
@@ -165,20 +247,22 @@ func (m Spotify) renderTrackList(w, h int) string {
 	return lipgloss.NewStyle().Height(h).MaxHeight(h).Render(b.String())
 }
 
+// --- right (now playing) -----------------------------------------------------
+
 func (m Spotify) renderRight() string {
-	sw, sh, tw, _ := panelDims(m.st.main, spotifyRightWidth, m.middleHeight())
+	box := panelBox(false, 0, 1)
+	sw, sh, tw, _ := panelDims(box, spotifyRightWidth, m.middleHeight())
 
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Foreground(colorFaint).Bold(true).Render("NOW PLAYING"))
+	b.WriteString(lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Now Playing"))
 	b.WriteString("\n\n")
 
 	if m.art != "" {
 		b.WriteString(indentBlock(m.art, (tw-m.artW)/2))
 	} else {
-		// Placeholder shown until the cover loads.
 		ph := lipgloss.NewStyle().
 			Foreground(colorFaint).
-			Border(lipgloss.RoundedBorder()).BorderForeground(colorFaint).
+			Border(lipgloss.RoundedBorder()).BorderForeground(colorBorder).
 			Width(tw - 2).Align(lipgloss.Center).
 			Render("\n  ♫  \n")
 		b.WriteString(ph)
@@ -209,60 +293,79 @@ func (m Spotify) renderRight() string {
 			b.WriteString("\n")
 		}
 	}
-	return m.st.main.Width(sw).Height(sh).Render(b.String())
+	return box.Width(sw).Height(sh).Render(b.String())
 }
+
+// --- player bar --------------------------------------------------------------
 
 func (m Spotify) renderPlayerBar() string {
-	sw, sh, tw, _ := panelDims(m.st.nowBar, m.width, spotifyPlayerHeight)
+	box := panelBox(false, 0, 2)
+	sw, sh, tw, _ := panelDims(box, m.width, spotifyPlayerHeight)
 
-	state := m.st.rowMuted.Render("■")
-	title := m.st.rowMuted.Render("Nothing playing — pick a track and press Enter")
-	var frac float64
+	// Line 1: mini now-playing | centered transport | volume.
+	mini := m.st.rowMuted.Render("Nothing playing")
 	if m.state != nil && m.state.Track != nil {
 		t := m.state.Track
-		if m.state.Playing {
-			state = m.st.barFill.Render("▶")
-		} else {
-			state = m.st.barFill.Render("⏸")
-		}
-		title = m.st.nowTitle.Render(truncate(t.Title, tw/2)) +
-			m.st.nowArtist.Render("  —  "+truncate(t.Artist, tw/3))
-		if t.Duration > 0 {
-			frac = float64(m.state.Progress) / float64(t.Duration)
-		}
+		mini = m.st.nowTitle.Render(truncate(t.Title, tw/4)) +
+			m.st.nowArtist.Render(" — "+truncate(t.Artist, tw/5))
 	}
-
-	// Top line: state + title (left), shuffle/repeat (right).
-	modes := m.modeIndicators()
-	gap := tw - lipgloss.Width(state) - 2 - lipgloss.Width(title) - lipgloss.Width(modes)
-	if gap < 1 {
-		gap = 1
+	vol := 50
+	if m.state != nil {
+		vol = m.state.Volume
 	}
-	line1 := state + "  " + title + strings.Repeat(" ", gap) + modes
+	volZone := m.st.rowMuted.Render(fmt.Sprintf("🔊 %d%%", vol))
+	line1 := threeCol(tw, mini, m.renderTransport(), volZone)
 
-	// Bottom line: times + progress + volume.
-	times, volStr, barW := m.progressMetrics(tw)
-	line2 := m.st.rowMuted.Render(times) + " " + meter(m.st, frac, barW) + m.st.rowMuted.Render(volStr)
+	// Line 2: elapsed + progress bar + total.
+	elapsed, total, _, barW := m.progressMetrics(tw)
+	var frac float64
+	if m.state != nil && m.state.Track != nil && m.state.Track.Duration > 0 {
+		frac = float64(m.state.Progress) / float64(m.state.Track.Duration)
+	}
+	line2 := m.st.rowMuted.Render(elapsed) + " " + meter(m.st, frac, barW) + " " + m.st.rowMuted.Render(total)
 
 	body := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
-	return m.st.nowBar.Width(sw).Height(sh).Render(body)
+	return box.Width(sw).Height(sh).Render(body)
 }
 
-func (m Spotify) modeIndicators() string {
-	shuffle, repeat := "🔀", "🔁"
+func (m Spotify) renderTransport() string {
 	on := lipgloss.NewStyle().Foreground(colorAccentHi)
-	off := lipgloss.NewStyle().Foreground(colorFaint)
-	s, r := off, off
-	if m.state != nil {
-		if m.state.Shuffle {
-			s = on
-		}
-		if m.state.Repeat == "context" || m.state.Repeat == "track" {
-			r = on
-		}
+	off := lipgloss.NewStyle().Foreground(colorMuted)
+
+	sh := off
+	if m.state != nil && m.state.Shuffle {
+		sh = on
 	}
-	return s.Render(shuffle) + " " + r.Render(repeat)
+	rp := off
+	if m.state != nil && (m.state.Repeat == "context" || m.state.Repeat == "track") {
+		rp = on
+	}
+
+	glyph := "▶"
+	if m.state != nil && m.state.Playing {
+		glyph = "❚❚"
+	}
+	btn := lipgloss.NewStyle().Background(colorAccent).Foreground(colorBlack).Bold(true).Render(" " + glyph + " ")
+
+	return sh.Render("🔀") + "   " + off.Render("◀◀") + "   " + btn + "   " + off.Render("▶▶") + "   " + rp.Render("🔁")
 }
+
+// progressMetrics returns the player-bar progress pieces and the bar's absolute
+// x position and width, so render and mouse hit-testing agree.
+func (m Spotify) progressMetrics(tw int) (elapsed, total string, barX0, barW int) {
+	elapsed, total = "0:00", "0:00"
+	if m.state != nil && m.state.Track != nil {
+		elapsed, total = fmtDur(m.state.Progress), fmtDur(m.state.Track.Duration)
+	}
+	barX0 = playerContentX + lipgloss.Width(elapsed) + 1
+	barW = tw - lipgloss.Width(elapsed) - lipgloss.Width(total) - 2
+	if barW < 4 {
+		barW = 4
+	}
+	return elapsed, total, barX0, barW
+}
+
+// --- shared helpers ----------------------------------------------------------
 
 // trackWindow returns the visible [start, end) track indices for a list of the
 // given height, scrolled to keep cursor visible.
@@ -285,39 +388,19 @@ func trackWindow(cursor, total, h int) (start, end int) {
 	return start, end
 }
 
-// centerGeom returns the center panel's outer width and the track-list height,
-// matching what View renders, so mouse hit-testing agrees with the layout.
+// centerGeom returns the center panel's outer width and track-list height,
+// matching View so mouse hit-testing agrees with the layout.
 func (m Spotify) centerGeom() (outerW, listH int) {
 	outerW = m.width - spotifySidebarWidth
 	if m.width >= 112 {
 		outerW -= spotifyRightWidth
 	}
-	_, _, _, th := panelDims(m.st.main, outerW, m.middleHeight())
-	listH = th - 3
+	_, _, _, th := panelDims(panelBox(false, 0, 1), outerW, m.middleHeight())
+	listH = th - 4
 	if listH < 1 {
 		listH = 1
 	}
 	return outerW, listH
-}
-
-// progressMetrics returns the player-bar bottom line pieces and the progress bar
-// width, given the bar's inner text width tw.
-func (m Spotify) progressMetrics(tw int) (times, volStr string, barW int) {
-	elapsed, total := "0:00", "0:00"
-	if m.state != nil && m.state.Track != nil {
-		elapsed, total = fmtDur(m.state.Progress), fmtDur(m.state.Track.Duration)
-	}
-	times = fmt.Sprintf("%s / %s", elapsed, total)
-	vol := 50
-	if m.state != nil {
-		vol = m.state.Volume
-	}
-	volStr = fmt.Sprintf("  🔊 %d%%", vol)
-	barW = tw - lipgloss.Width(times) - lipgloss.Width(volStr) - 3
-	if barW < 4 {
-		barW = 4
-	}
-	return times, volStr, barW
 }
 
 // indentBlock prefixes every line of s with n spaces (used to center art).
@@ -343,8 +426,16 @@ func meter(st styles, frac float64, width int) string {
 	if filled > width {
 		filled = width
 	}
-	return st.barFill.Render(strings.Repeat("━", filled)) +
-		st.barEmpty.Render(strings.Repeat("─", width-filled))
+	knob := ""
+	if filled < width {
+		knob = st.barFill.Render("●")
+		filled--
+		if filled < 0 {
+			filled = 0
+		}
+	}
+	return st.barFill.Render(strings.Repeat("━", filled)) + knob +
+		st.barEmpty.Render(strings.Repeat("─", width-filled-lipgloss.Width(knob)))
 }
 
 func (m Spotify) renderSpotifyHelp() string {
@@ -358,8 +449,7 @@ func (m Spotify) renderSpotifyHelp() string {
 		key("n/b") + dim(" next/prev"),
 		key("←→") + dim(" seek"),
 		key("+/-") + dim(" vol"),
-		key("s") + dim(" shuffle"),
-		key("r") + dim(" repeat"),
+		key("s/r") + dim(" shuffle/repeat"),
 		key("/") + dim(" search"),
 		key("q") + dim(" quit"),
 	}

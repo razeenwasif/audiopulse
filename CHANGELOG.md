@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Spotify-desktop visual redesign** — a top bar with a centered search field,
+  two-line library rows with colored thumbnails and subtitles, a center feed with
+  filter chips and a numbered track table, a 3-zone player bar with centered
+  transport controls and a circular play button, and album art in the
+  now-playing panel. Borders are now subtle gray, with green reserved as an
+  accent that highlights the focused panel and active controls
+  ([ADR-0006](docs/adr/0006-spotify-desktop-ui.md)).
 - **Mouse support** — scroll wheel moves the selection in the panel under the
   pointer; click a library entry to open it; click a track to play it; click or
   drag the progress bar to seek; click the play/pause indicator to toggle.

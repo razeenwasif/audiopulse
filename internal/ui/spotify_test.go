@@ -8,7 +8,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"audiopulse/internal/spotify"
 )
@@ -35,7 +34,7 @@ func sampleSpotify() Spotify {
 
 func TestSpotifyRenderNoPanic(t *testing.T) {
 	view := sampleSpotify().View()
-	for _, want := range []string{"AudioPulse", "LIBRARY", "Chill Vibes", "NOW PLAYING", "Midnight City"} {
+	for _, want := range []string{"AudioPulse", "Your Library", "Chill Vibes", "Now Playing", "Midnight City"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q\n---\n%s", want, view)
 		}
@@ -110,13 +109,12 @@ func TestMouseClickPlaysTrack(t *testing.T) {
 
 func TestMouseSeekOnProgressBar(t *testing.T) {
 	m := sampleSpotify()
-	_, _, tw, _ := panelDims(m.st.nowBar, m.width, spotifyPlayerHeight)
-	times, _, barW := m.progressMetrics(tw)
-	meterX0 := playerContentX + lipgloss.Width(times) + 1
+	_, _, tw, _ := panelDims(panelBox(false, 0, 2), m.width, spotifyPlayerHeight)
+	_, _, barX0, barW := m.progressMetrics(tw)
 
 	// Click in the middle of the progress bar → seek command.
 	var mm tea.Model = m
-	_, cmd := mm.Update(tea.MouseMsg{X: meterX0 + barW/2, Y: m.progressRowY(), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	_, cmd := mm.Update(tea.MouseMsg{X: barX0 + barW/2, Y: m.progressRowY(), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	if cmd == nil {
 		t.Error("clicking the progress bar should return a seek command")
 	}

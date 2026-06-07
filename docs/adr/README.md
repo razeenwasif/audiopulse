@@ -18,6 +18,7 @@ history.
 | [0003](0003-beep-for-audio-playback.md)          | `faiface/beep` for audio playback       | Accepted |
 | [0004](0004-build-tag-fallback-strategy.md)      | Build-tag silent-audio fallback         | Accepted |
 | [0005](0005-spotify-via-librespot.md)            | Spotify full-song playback via librespot| Accepted |
+| [0006](0006-spotify-desktop-ui.md)               | Spotify-desktop visual design           | Accepted |
 
 ## Statuses
 
