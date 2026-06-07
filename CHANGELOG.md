@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The library list is now scroll-windowed and every panel is height-clipped, so a
   long playlist list no longer overflows and pushes the player bar and help line
   off-screen (which had hidden the shuffle/repeat feedback and key hints).
+- The top bar, player bar, and help line are clamped to their exact heights and
+  given horizontal slack so a glyph that a terminal sizes differently than
+  computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
 - **Shuffle / repeat shortcuts with feedback** — `s` toggles shuffle, `r` toggles

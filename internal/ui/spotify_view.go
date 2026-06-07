@@ -63,7 +63,8 @@ func (m Spotify) renderTopBar() string {
 	pill := pillStyle.Render(content)
 
 	right := lipgloss.NewStyle().Foreground(colorMuted).Render(m.user+" ▾") + " "
-	return threeCol(m.width, left, pill, right)
+	line := lipgloss.NewStyle().MaxWidth(m.width).Render(threeCol(m.width, left, pill, right))
+	return clipLines(line, spotifyTopHeight)
 }
 
 // threeCol lays out left/center/right with center horizontally centered.
@@ -327,7 +328,9 @@ func (m Spotify) renderPlayerBar() string {
 		vol = m.state.Volume
 	}
 	volZone := m.st.rowMuted.Render(fmt.Sprintf("🔊 %d%%", vol))
-	line1 := threeCol(tw, mini, m.renderTransport(), volZone)
+	// Leave a few columns of slack so glyph-width differences between terminals
+	// can't make this line wrap (which would grow the bar and hide the help line).
+	line1 := threeCol(tw-4, mini, m.renderTransport(), volZone)
 
 	// Line 2: elapsed + progress bar + total.
 	elapsed, total, _, barW := m.progressMetrics(tw)
@@ -337,8 +340,11 @@ func (m Spotify) renderPlayerBar() string {
 	}
 	line2 := m.st.rowMuted.Render(elapsed) + " " + meter(m.st, frac, barW) + " " + m.st.rowMuted.Render(total)
 
-	body := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
-	return box.Width(sw).Height(sh).Render(body)
+	// Truncate each line to the panel width so an over-wide line can't wrap and
+	// grow the bar past its row budget (which would push the help line off-screen).
+	noWrap := lipgloss.NewStyle().MaxWidth(tw)
+	body := lipgloss.JoinVertical(lipgloss.Left, noWrap.Render(line1), noWrap.Render(line2))
+	return clipLines(box.Width(sw).Height(sh).Render(body), spotifyPlayerHeight)
 }
 
 func (m Spotify) renderTransport() string {
@@ -381,7 +387,9 @@ func (m Spotify) progressMetrics(tw int) (elapsed, total string, barX0, barW int
 		elapsed, total = fmtDur(m.state.Progress), fmtDur(m.state.Track.Duration)
 	}
 	barX0 = playerContentX + lipgloss.Width(elapsed) + 1
-	barW = tw - lipgloss.Width(elapsed) - lipgloss.Width(total) - 2
+	// -4 leaves slack (incl. the knob ●) so the line can't wrap on terminals that
+	// size a glyph differently than computed.
+	barW = tw - lipgloss.Width(elapsed) - lipgloss.Width(total) - 4
 	if barW < 4 {
 		barW = 4
 	}
@@ -491,5 +499,5 @@ func (m Spotify) renderSpotifyHelp() string {
 		key("q") + dim(" quit"),
 	}
 	line := "  " + strings.Join(parts, dim("  •  "))
-	return lipgloss.NewStyle().MaxHeight(1).Render(truncate(line, m.width))
+	return clipLines(lipgloss.NewStyle().MaxWidth(m.width).Render(line), spotifyHelpHeight)
 }
