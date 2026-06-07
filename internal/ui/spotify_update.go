@@ -50,6 +50,16 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playerMsg:
 		if msg.state != nil {
 			m.state = msg.state
+			// Seed local shuffle/repeat once; thereafter the user's keypresses are
+			// authoritative (the API doesn't reliably report these for librespot).
+			if !m.seeded {
+				m.shuffle = msg.state.Shuffle
+				m.repeat = msg.state.Repeat
+				if m.repeat == "" {
+					m.repeat = "off"
+				}
+				m.seeded = true
+			}
 		}
 		m.queue = msg.queue
 		// Load album art when the track's cover changes (only if the right
@@ -169,11 +179,8 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.changeVolume(-volumeStepPct)
 
 	case "s":
-		on := m.state != nil && m.state.Shuffle
-		want := !on
-		if m.state != nil { // optimistic: turn the glyph green immediately
-			m.state.Shuffle = want
-		}
+		m.shuffle = !m.shuffle // local intent → glyph turns green immediately
+		want := m.shuffle
 		return m, m.action(func(ctx context.Context) error { return m.client.SetShuffle(ctx, want) })
 	case "S":
 		m.status = "Smart shuffle isn't available via the Spotify Web API (client-only feature)."
@@ -187,19 +194,14 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 // setRepeat toggles the given repeat mode ("context" = loop all, "track" = loop
-// one): pressing it again turns repeat off. Updates the glyph optimistically.
+// one): pressing it again turns repeat off. Updates the glyph immediately.
 func (m *Spotify) setRepeat(mode string) tea.Cmd {
-	cur := "off"
-	if m.state != nil && m.state.Repeat != "" {
-		cur = m.state.Repeat
+	if m.repeat == mode {
+		m.repeat = "off"
+	} else {
+		m.repeat = mode
 	}
-	target := mode
-	if cur == mode {
-		target = "off"
-	}
-	if m.state != nil {
-		m.state.Repeat = target
-	}
+	target := m.repeat
 	return m.action(func(ctx context.Context) error { return m.client.SetRepeat(ctx, target) })
 }
 

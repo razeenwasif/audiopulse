@@ -129,19 +129,19 @@ func TestRepeatAndShuffleKeys(t *testing.T) {
 	var m tea.Model = sampleSpotify()
 
 	m, _ = m.Update(rune("r")) // loop all
-	if got := m.(Spotify).state.Repeat; got != "context" {
+	if got := m.(Spotify).repeat; got != "context" {
 		t.Errorf("after r: repeat = %q, want context", got)
 	}
 	m, _ = m.Update(rune("r")) // toggle off
-	if got := m.(Spotify).state.Repeat; got != "off" {
+	if got := m.(Spotify).repeat; got != "off" {
 		t.Errorf("after r,r: repeat = %q, want off", got)
 	}
 	m, _ = m.Update(rune("R")) // loop one
-	if got := m.(Spotify).state.Repeat; got != "track" {
+	if got := m.(Spotify).repeat; got != "track" {
 		t.Errorf("after R: repeat = %q, want track", got)
 	}
-	m, _ = m.Update(rune("s")) // shuffle on (optimistic)
-	if !m.(Spotify).state.Shuffle {
+	m, _ = m.Update(rune("s")) // shuffle on
+	if !m.(Spotify).shuffle {
 		t.Error("after s: shuffle should be on")
 	}
 
@@ -151,11 +151,28 @@ func TestRepeatAndShuffleKeys(t *testing.T) {
 	}
 }
 
+func TestShuffleStickyAcrossPoll(t *testing.T) {
+	var m tea.Model = sampleSpotify()
+	// First poll seeds shuffle=false.
+	m, _ = m.Update(playerMsg{state: &spotify.PlayerState{Shuffle: false, Repeat: "off"}})
+	// User presses s → shuffle on.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if !m.(Spotify).shuffle {
+		t.Fatal("expected shuffle on after s")
+	}
+	// A later poll where the API still reports shuffle=false must NOT revert it
+	// (the Web API doesn't reliably report shuffle for a librespot device).
+	m, _ = m.Update(playerMsg{state: &spotify.PlayerState{Shuffle: false, Repeat: "off"}})
+	if !m.(Spotify).shuffle {
+		t.Error("poll clobbered the user's shuffle intent")
+	}
+}
+
 func TestSmartShuffleIsInformative(t *testing.T) {
 	var m tea.Model = sampleSpotify()
-	before := m.(Spotify).state.Shuffle
+	before := m.(Spotify).shuffle
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
-	if m.(Spotify).state.Shuffle != before {
+	if m.(Spotify).shuffle != before {
 		t.Error("smart shuffle should not change shuffle state")
 	}
 	if cmd != nil {

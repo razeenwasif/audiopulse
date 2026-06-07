@@ -351,23 +351,21 @@ func (m Spotify) renderTransport() string {
 	on := lipgloss.NewStyle().Foreground(colorAccentHi)
 	off := lipgloss.NewStyle().Foreground(colorMuted)
 
-	// Shuffle: green when on.
+	// Shuffle: green when on (local intent).
 	sh := off
-	if m.state != nil && m.state.Shuffle {
+	if m.shuffle {
 		sh = on
 	}
 
 	// Repeat: 🔁 for loop-all, 🔂 for loop-one; green when active.
 	repeatGlyph := "🔁"
 	rp := off
-	if m.state != nil {
-		switch m.state.Repeat {
-		case "context":
-			rp = on
-		case "track":
-			rp = on
-			repeatGlyph = "🔂"
-		}
+	switch m.repeat {
+	case "context":
+		rp = on
+	case "track":
+		rp = on
+		repeatGlyph = "🔂"
 	}
 
 	glyph := "▶"

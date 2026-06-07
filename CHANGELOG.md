@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Shuffle/repeat glyphs now reflect the keypress immediately and stay lit. They
+  are tracked as local intent (seeded once from the first poll) instead of being
+  re-read every second from the Web API, which doesn't reliably report these for
+  a librespot device and was snapping the glyphs back to gray.
 - The library list is now scroll-windowed and every panel is height-clipped, so a
   long playlist list no longer overflows and pushes the player bar and help line
   off-screen (which had hidden the shuffle/repeat feedback and key hints).

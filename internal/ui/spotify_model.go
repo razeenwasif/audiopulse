@@ -69,6 +69,13 @@ type Spotify struct {
 	state *spotify.PlayerState
 	queue []spotify.Track
 
+	// Shuffle/repeat are tracked locally so the glyphs reflect the user's intent
+	// immediately and don't flicker — the Web API doesn't reliably report these
+	// back for a librespot device. Seeded once from the first poll.
+	shuffle bool
+	repeat  string // "off" | "context" | "track"
+	seeded  bool
+
 	art        string // rendered album art for the current track
 	artURL     string // image URL the art was rendered from
 	artW, artH int    // art size in cells (height derived from cell aspect)
