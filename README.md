@@ -125,8 +125,13 @@ Full, platform-by-platform instructions live in
 | `n` / `b`       | Next / previous track                        |
 | `←` / `→`       | Seek −/+ 5s                                  |
 | `+` / `-`       | Volume up / down                             |
-| `s` / `r`       | Toggle shuffle / cycle repeat                |
+| `s`             | Toggle shuffle                               |
+| `r` / `R`       | Toggle loop-all / loop-one (repeat)          |
 | `q` / `ctrl+c`  | Quit                                         |
+
+The shuffle and repeat glyphs in the player bar turn **green** when active.
+(*Smart shuffle* is a Spotify client-only feature with no Web API endpoint, so it
+can't be toggled from AudioPulse — pressing `S` explains this.)
 
 **Mouse** (Spotify mode): scroll wheel moves the selection under the pointer;
 click a library entry to open it; click a track to play it; click or drag the

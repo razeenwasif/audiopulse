@@ -169,19 +169,38 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.changeVolume(-volumeStepPct)
 
 	case "s":
-		shuffle := m.state != nil && m.state.Shuffle
-		return m, m.action(func(ctx context.Context) error { return m.client.SetShuffle(ctx, !shuffle) })
-	case "r":
-		cur := "off"
-		if m.state != nil && m.state.Repeat != "" {
-			cur = m.state.Repeat
+		on := m.state != nil && m.state.Shuffle
+		want := !on
+		if m.state != nil { // optimistic: turn the glyph green immediately
+			m.state.Shuffle = want
 		}
-		return m, m.action(func(ctx context.Context) error {
-			_, err := m.client.CycleRepeat(ctx, cur)
-			return err
-		})
+		return m, m.action(func(ctx context.Context) error { return m.client.SetShuffle(ctx, want) })
+	case "S":
+		m.status = "Smart shuffle isn't available via the Spotify Web API (client-only feature)."
+		return m, nil
+	case "r":
+		return m, m.setRepeat("context")
+	case "R":
+		return m, m.setRepeat("track")
 	}
 	return m, nil
+}
+
+// setRepeat toggles the given repeat mode ("context" = loop all, "track" = loop
+// one): pressing it again turns repeat off. Updates the glyph optimistically.
+func (m *Spotify) setRepeat(mode string) tea.Cmd {
+	cur := "off"
+	if m.state != nil && m.state.Repeat != "" {
+		cur = m.state.Repeat
+	}
+	target := mode
+	if cur == mode {
+		target = "off"
+	}
+	if m.state != nil {
+		m.state.Repeat = target
+	}
+	return m.action(func(ctx context.Context) error { return m.client.SetRepeat(ctx, target) })
 }
 
 func (m Spotify) togglePlay() tea.Cmd {

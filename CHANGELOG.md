@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Shuffle / repeat shortcuts with feedback** — `s` toggles shuffle, `r` toggles
+  loop-all (repeat context), and `R` toggles loop-one (repeat track). The player
+  bar glyphs turn green when active (🔂 for loop-one), updated optimistically.
+  Smart shuffle has no Web API endpoint, so `S` shows an explanation instead.
 - **Spotify-desktop visual redesign** — a top bar with a centered search field,
   two-line library rows with colored thumbnails and subtitles, a center feed with
   filter chips and a numbered track table, a 3-zone player bar with centered

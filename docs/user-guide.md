@@ -35,10 +35,12 @@ A complete tour of AudioPulse's interface and controls.
 
 **Controls:** `tab` switches the focused panel; `↑↓`/`j`/`k` move; `enter` opens
 a library entry or plays the selected track; `space` play/pause; `n`/`b`
-next/prev; `←`/`→` seek; `+`/`-` volume; `s`/`r` shuffle/repeat; `/` search;
-`q` quit. **Mouse:** wheel scrolls the panel under the pointer; click a library
-entry to open it; click a track to play it; click or drag the progress bar to
-seek; click the play/pause area to toggle.
+next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R` loop-all/loop-one
+(repeat); `/` search; `q` quit. The shuffle and repeat glyphs turn **green** when
+active. (*Smart shuffle* has no Web API endpoint and can't be toggled here;
+pressing `S` says so.) **Mouse:** wheel scrolls the panel under the pointer;
+click a library entry to open it; click a track to play it; click or drag the
+progress bar to seek; click the play/pause area to toggle.
 
 ## Contents (Deezer guest mode)
 

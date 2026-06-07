@@ -124,6 +124,48 @@ func TestMouseSeekOnProgressBar(t *testing.T) {
 	}
 }
 
+func TestRepeatAndShuffleKeys(t *testing.T) {
+	rune := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	var m tea.Model = sampleSpotify()
+
+	m, _ = m.Update(rune("r")) // loop all
+	if got := m.(Spotify).state.Repeat; got != "context" {
+		t.Errorf("after r: repeat = %q, want context", got)
+	}
+	m, _ = m.Update(rune("r")) // toggle off
+	if got := m.(Spotify).state.Repeat; got != "off" {
+		t.Errorf("after r,r: repeat = %q, want off", got)
+	}
+	m, _ = m.Update(rune("R")) // loop one
+	if got := m.(Spotify).state.Repeat; got != "track" {
+		t.Errorf("after R: repeat = %q, want track", got)
+	}
+	m, _ = m.Update(rune("s")) // shuffle on (optimistic)
+	if !m.(Spotify).state.Shuffle {
+		t.Error("after s: shuffle should be on")
+	}
+
+	// The track-repeat glyph (🔂) should appear in the transport.
+	if !strings.Contains(m.View(), "🔂") {
+		t.Error("loop-one should render the 🔂 glyph")
+	}
+}
+
+func TestSmartShuffleIsInformative(t *testing.T) {
+	var m tea.Model = sampleSpotify()
+	before := m.(Spotify).state.Shuffle
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	if m.(Spotify).state.Shuffle != before {
+		t.Error("smart shuffle should not change shuffle state")
+	}
+	if cmd != nil {
+		t.Error("smart shuffle should not issue an API command")
+	}
+	if !strings.Contains(m.(Spotify).status, "Smart shuffle") {
+		t.Error("smart shuffle should set an explanatory status")
+	}
+}
+
 func TestClampHelper(t *testing.T) {
 	cases := []struct{ v, lo, hi, want int }{
 		{5, 0, 10, 5}, {-1, 0, 10, 0}, {11, 0, 10, 10}, {3, 0, -1, 0},

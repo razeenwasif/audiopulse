@@ -332,13 +332,23 @@ func (m Spotify) renderTransport() string {
 	on := lipgloss.NewStyle().Foreground(colorAccentHi)
 	off := lipgloss.NewStyle().Foreground(colorMuted)
 
+	// Shuffle: green when on.
 	sh := off
 	if m.state != nil && m.state.Shuffle {
 		sh = on
 	}
+
+	// Repeat: 🔁 for loop-all, 🔂 for loop-one; green when active.
+	repeatGlyph := "🔁"
 	rp := off
-	if m.state != nil && (m.state.Repeat == "context" || m.state.Repeat == "track") {
-		rp = on
+	if m.state != nil {
+		switch m.state.Repeat {
+		case "context":
+			rp = on
+		case "track":
+			rp = on
+			repeatGlyph = "🔂"
+		}
 	}
 
 	glyph := "▶"
@@ -347,7 +357,7 @@ func (m Spotify) renderTransport() string {
 	}
 	btn := lipgloss.NewStyle().Background(colorAccent).Foreground(colorBlack).Bold(true).Render(" " + glyph + " ")
 
-	return sh.Render("🔀") + "   " + off.Render("◀◀") + "   " + btn + "   " + off.Render("▶▶") + "   " + rp.Render("🔁")
+	return sh.Render("🔀") + "   " + off.Render("◀◀") + "   " + btn + "   " + off.Render("▶▶") + "   " + rp.Render(repeatGlyph)
 }
 
 // progressMetrics returns the player-bar progress pieces and the bar's absolute
@@ -449,7 +459,8 @@ func (m Spotify) renderSpotifyHelp() string {
 		key("n/b") + dim(" next/prev"),
 		key("←→") + dim(" seek"),
 		key("+/-") + dim(" vol"),
-		key("s/r") + dim(" shuffle/repeat"),
+		key("s") + dim(" shuffle"),
+		key("r/R") + dim(" loop all/one"),
 		key("/") + dim(" search"),
 		key("q") + dim(" quit"),
 	}

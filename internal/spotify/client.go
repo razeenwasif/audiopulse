@@ -278,14 +278,10 @@ func (c *Client) SetShuffle(ctx context.Context, on bool) error {
 	return c.api.Shuffle(ctx, on)
 }
 
-// CycleRepeat advances repeat mode off → context → track → off and returns the
-// new mode.
-func (c *Client) CycleRepeat(ctx context.Context, current string) (string, error) {
-	next := map[string]string{"off": "context", "context": "track", "track": "off"}[current]
-	if next == "" {
-		next = "context"
-	}
-	return next, c.api.Repeat(ctx, next)
+// SetRepeat sets the repeat mode: "off", "context" (loop all), or "track"
+// (loop one).
+func (c *Client) SetRepeat(ctx context.Context, state string) error {
+	return c.api.Repeat(ctx, state)
 }
 
 // State returns the current playback snapshot, or (nil, nil) when nothing is
