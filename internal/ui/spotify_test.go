@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"audiopulse/internal/spotify"
 )
@@ -78,6 +79,50 @@ func TestSearchFocusToggle(t *testing.T) {
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if m.(Spotify).focus != panelTracks {
 		t.Error("esc should leave search focus")
+	}
+}
+
+func TestMouseWheelScroll(t *testing.T) {
+	// Wheel over the center panel (x>=sidebar) moves the track cursor.
+	var m tea.Model = sampleSpotify() // 2 tracks, cursor 0
+	m, _ = m.Update(tea.MouseMsg{X: 40, Button: tea.MouseButtonWheelDown})
+	if got := m.(Spotify).trackCursor; got != 1 {
+		t.Errorf("wheel down: trackCursor = %d, want 1", got)
+	}
+	// Wheel over the library panel (x<sidebar) moves the library cursor.
+	m, _ = m.Update(tea.MouseMsg{X: 5, Button: tea.MouseButtonWheelUp})
+	if got := m.(Spotify).libCursor; got != 1 { // sample libCursor starts at 2
+		t.Errorf("wheel up over library: libCursor = %d, want 1", got)
+	}
+}
+
+func TestMouseClickPlaysTrack(t *testing.T) {
+	var m tea.Model = sampleSpotify()
+	// Second visible track row is trackFirstRowY+1; center column x=40.
+	m, cmd := m.Update(tea.MouseMsg{X: 40, Y: trackFirstRowY + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if got := m.(Spotify).trackCursor; got != 1 {
+		t.Errorf("click track row: trackCursor = %d, want 1", got)
+	}
+	if cmd == nil {
+		t.Error("clicking a track should return a play command")
+	}
+}
+
+func TestMouseSeekOnProgressBar(t *testing.T) {
+	m := sampleSpotify()
+	_, _, tw, _ := panelDims(m.st.nowBar, m.width, spotifyPlayerHeight)
+	times, _, barW := m.progressMetrics(tw)
+	meterX0 := playerContentX + lipgloss.Width(times) + 1
+
+	// Click in the middle of the progress bar → seek command.
+	var mm tea.Model = m
+	_, cmd := mm.Update(tea.MouseMsg{X: meterX0 + barW/2, Y: m.progressRowY(), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if cmd == nil {
+		t.Error("clicking the progress bar should return a seek command")
+	}
+	// Click far left of the bar (x=0) → no seek.
+	if _, cmd := mm.Update(tea.MouseMsg{X: 0, Y: m.progressRowY(), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}); cmd != nil {
+		t.Error("click outside the progress bar should not seek")
 	}
 }
 

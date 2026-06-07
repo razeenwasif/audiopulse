@@ -63,7 +63,7 @@ func main() {
 // runDeezer runs the no-login preview UI.
 func runDeezer() {
 	restore := silenceNativeStderr()
-	p := tea.NewProgram(ui.New(), tea.WithAltScreen())
+	p := tea.NewProgram(ui.New(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	restore()
 	if err != nil {
@@ -107,7 +107,7 @@ func runSpotify(cfg *config.Config) error {
 
 	// 4. Run the TUI (native-library noise redirected to a log).
 	restore := silenceNativeStderr()
-	p := tea.NewProgram(ui.NewSpotify(client, deviceID, user, cellAspect()), tea.WithAltScreen())
+	p := tea.NewProgram(ui.NewSpotify(client, deviceID, user, cellAspect()), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, runErr := p.Run()
 	restore()
 	sup.Stop()

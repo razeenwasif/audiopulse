@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Mouse support** — scroll wheel moves the selection in the panel under the
+  pointer; click a library entry to open it; click a track to play it; click or
+  drag the progress bar to seek; click the play/pause indicator to toggle.
 - **Spotify mode** — full-song playback from a Spotify Premium account:
   - OAuth 2.0 PKCE sign-in with a local loopback callback; token cached at
     `~/.config/audiopulse/token.json` (`0600`) and auto-refreshed.

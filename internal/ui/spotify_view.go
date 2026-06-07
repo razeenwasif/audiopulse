@@ -123,19 +123,7 @@ func (m Spotify) renderTrackList(w, h int) string {
 			Render("No tracks. Pick something on the left and press Enter.")
 	}
 
-	start := 0
-	if m.trackCursor >= h {
-		start = m.trackCursor - h + 1
-	}
-	end := start + h
-	if end > len(m.tracks) {
-		end = len(m.tracks)
-		if end-h > 0 {
-			start = end - h
-		} else {
-			start = 0
-		}
-	}
+	start, end := trackWindow(m.trackCursor, len(m.tracks), h)
 
 	durW := 6
 	textW := w - durW - 3
@@ -229,7 +217,6 @@ func (m Spotify) renderPlayerBar() string {
 
 	state := m.st.rowMuted.Render("■")
 	title := m.st.rowMuted.Render("Nothing playing — pick a track and press Enter")
-	var elapsed, total string
 	var frac float64
 	if m.state != nil && m.state.Track != nil {
 		t := m.state.Track
@@ -240,12 +227,9 @@ func (m Spotify) renderPlayerBar() string {
 		}
 		title = m.st.nowTitle.Render(truncate(t.Title, tw/2)) +
 			m.st.nowArtist.Render("  —  "+truncate(t.Artist, tw/3))
-		elapsed, total = fmtDur(m.state.Progress), fmtDur(t.Duration)
 		if t.Duration > 0 {
 			frac = float64(m.state.Progress) / float64(t.Duration)
 		}
-	} else {
-		elapsed, total = "0:00", "0:00"
 	}
 
 	// Top line: state + title (left), shuffle/repeat (right).
@@ -257,16 +241,7 @@ func (m Spotify) renderPlayerBar() string {
 	line1 := state + "  " + title + strings.Repeat(" ", gap) + modes
 
 	// Bottom line: times + progress + volume.
-	times := fmt.Sprintf("%s / %s", elapsed, total)
-	vol := 50
-	if m.state != nil {
-		vol = m.state.Volume
-	}
-	volStr := fmt.Sprintf("  🔊 %d%%", vol)
-	barW := tw - lipgloss.Width(times) - lipgloss.Width(volStr) - 3
-	if barW < 4 {
-		barW = 4
-	}
+	times, volStr, barW := m.progressMetrics(tw)
 	line2 := m.st.rowMuted.Render(times) + " " + meter(m.st, frac, barW) + m.st.rowMuted.Render(volStr)
 
 	body := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
@@ -287,6 +262,62 @@ func (m Spotify) modeIndicators() string {
 		}
 	}
 	return s.Render(shuffle) + " " + r.Render(repeat)
+}
+
+// trackWindow returns the visible [start, end) track indices for a list of the
+// given height, scrolled to keep cursor visible.
+func trackWindow(cursor, total, h int) (start, end int) {
+	if h < 1 {
+		h = 1
+	}
+	if cursor >= h {
+		start = cursor - h + 1
+	}
+	end = start + h
+	if end > total {
+		end = total
+		if end-h > 0 {
+			start = end - h
+		} else {
+			start = 0
+		}
+	}
+	return start, end
+}
+
+// centerGeom returns the center panel's outer width and the track-list height,
+// matching what View renders, so mouse hit-testing agrees with the layout.
+func (m Spotify) centerGeom() (outerW, listH int) {
+	outerW = m.width - spotifySidebarWidth
+	if m.width >= 112 {
+		outerW -= spotifyRightWidth
+	}
+	_, _, _, th := panelDims(m.st.main, outerW, m.middleHeight())
+	listH = th - 3
+	if listH < 1 {
+		listH = 1
+	}
+	return outerW, listH
+}
+
+// progressMetrics returns the player-bar bottom line pieces and the progress bar
+// width, given the bar's inner text width tw.
+func (m Spotify) progressMetrics(tw int) (times, volStr string, barW int) {
+	elapsed, total := "0:00", "0:00"
+	if m.state != nil && m.state.Track != nil {
+		elapsed, total = fmtDur(m.state.Progress), fmtDur(m.state.Track.Duration)
+	}
+	times = fmt.Sprintf("%s / %s", elapsed, total)
+	vol := 50
+	if m.state != nil {
+		vol = m.state.Volume
+	}
+	volStr = fmt.Sprintf("  🔊 %d%%", vol)
+	barW = tw - lipgloss.Width(times) - lipgloss.Width(volStr) - 3
+	if barW < 4 {
+		barW = 4
+	}
+	return times, volStr, barW
 }
 
 // indentBlock prefixes every line of s with n spaces (used to center art).

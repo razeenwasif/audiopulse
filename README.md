@@ -128,6 +128,10 @@ Full, platform-by-platform instructions live in
 | `s` / `r`       | Toggle shuffle / cycle repeat                |
 | `q` / `ctrl+c`  | Quit                                         |
 
+**Mouse** (Spotify mode): scroll wheel moves the selection under the pointer;
+click a library entry to open it; click a track to play it; click or drag the
+progress bar to seek; click the play/pause indicator to toggle.
+
 **Deezer guest mode**
 
 | Key             | Action                                  |

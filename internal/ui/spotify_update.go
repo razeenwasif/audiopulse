@@ -76,6 +76,9 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.pollCmd()
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case tea.KeyMsg:
 		return m.handleSpotifyKey(msg)
 	}
