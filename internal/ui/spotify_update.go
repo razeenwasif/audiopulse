@@ -50,16 +50,6 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playerMsg:
 		if msg.state != nil {
 			m.state = msg.state
-			// Seed local shuffle/repeat once; thereafter the user's keypresses are
-			// authoritative (the API doesn't reliably report these for librespot).
-			if !m.seeded {
-				m.shuffle = msg.state.Shuffle
-				m.repeat = msg.state.Repeat
-				if m.repeat == "" {
-					m.repeat = "off"
-				}
-				m.seeded = true
-			}
 		}
 		m.queue = msg.queue
 		// Load album art when the track's cover changes (only if the right

@@ -153,15 +153,13 @@ func TestRepeatAndShuffleKeys(t *testing.T) {
 
 func TestShuffleStickyAcrossPoll(t *testing.T) {
 	var m tea.Model = sampleSpotify()
-	// First poll seeds shuffle=false.
-	m, _ = m.Update(playerMsg{state: &spotify.PlayerState{Shuffle: false, Repeat: "off"}})
-	// User presses s → shuffle on.
+	// Shuffle starts off and the user turns it on.
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	if !m.(Spotify).shuffle {
 		t.Fatal("expected shuffle on after s")
 	}
-	// A later poll where the API still reports shuffle=false must NOT revert it
-	// (the Web API doesn't reliably report shuffle for a librespot device).
+	// A poll where the API reports shuffle=false must NOT revert it (the Web API
+	// doesn't reliably report shuffle for a librespot device).
 	m, _ = m.Update(playerMsg{state: &spotify.PlayerState{Shuffle: false, Repeat: "off"}})
 	if !m.(Spotify).shuffle {
 		t.Error("poll clobbered the user's shuffle intent")

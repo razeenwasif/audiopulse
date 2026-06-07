@@ -69,12 +69,11 @@ type Spotify struct {
 	state *spotify.PlayerState
 	queue []spotify.Track
 
-	// Shuffle/repeat are tracked locally so the glyphs reflect the user's intent
-	// immediately and don't flicker — the Web API doesn't reliably report these
-	// back for a librespot device. Seeded once from the first poll.
+	// Shuffle/repeat are tracked locally and start off. The Web API doesn't
+	// reliably report these for a librespot device, so seeding from it flipped the
+	// glyphs the wrong way — the user's keypresses are the single source of truth.
 	shuffle bool
 	repeat  string // "off" | "context" | "track"
-	seeded  bool
 
 	art        string // rendered album art for the current track
 	artURL     string // image URL the art was rendered from
@@ -107,6 +106,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		search:   ti,
 		artW:     w,
 		artH:     h,
+		repeat:   "off",
 		focus:    panelLibrary,
 		status:   "Loading your library…",
 	}
