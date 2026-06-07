@@ -145,9 +145,9 @@ func TestRepeatAndShuffleKeys(t *testing.T) {
 		t.Error("after s: shuffle should be on")
 	}
 
-	// The track-repeat glyph (🔂) should appear in the transport.
-	if !strings.Contains(m.View(), "🔂") {
-		t.Error("loop-one should render the 🔂 glyph")
+	// The loop-one indicator (↻1) should appear in the transport.
+	if !strings.Contains(m.View(), "↻1") {
+		t.Error("loop-one should render the ↻1 indicator")
 	}
 }
 

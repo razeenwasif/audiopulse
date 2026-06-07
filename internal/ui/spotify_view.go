@@ -327,7 +327,7 @@ func (m Spotify) renderPlayerBar() string {
 	if m.state != nil {
 		vol = m.state.Volume
 	}
-	volZone := m.st.rowMuted.Render(fmt.Sprintf("🔊 %d%%", vol))
+	volZone := m.st.rowMuted.Render(fmt.Sprintf("vol %d%%", vol))
 	// Leave a few columns of slack so glyph-width differences between terminals
 	// can't make this line wrap (which would grow the bar and hide the help line).
 	line1 := threeCol(tw-4, mini, m.renderTransport(), volZone)
@@ -351,30 +351,34 @@ func (m Spotify) renderTransport() string {
 	on := lipgloss.NewStyle().Foreground(colorAccentHi)
 	off := lipgloss.NewStyle().Foreground(colorMuted)
 
+	// NOTE: emoji glyphs (🔀 🔁 🔂) are drawn by the terminal in their own colors
+	// regardless of SGR styling, so they can't show the green "active" state. Use
+	// monochrome text symbols, which respect the foreground color.
+
 	// Shuffle: green when on (local intent).
 	sh := off
 	if m.shuffle {
 		sh = on
 	}
 
-	// Repeat: 🔁 for loop-all, 🔂 for loop-one; green when active.
-	repeatGlyph := "🔁"
+	// Repeat: ↻ for loop-all, ↻1 for loop-one; green when active.
+	repeatGlyph := "↻ "
 	rp := off
 	switch m.repeat {
 	case "context":
 		rp = on
 	case "track":
 		rp = on
-		repeatGlyph = "🔂"
+		repeatGlyph = "↻1"
 	}
 
-	glyph := "▶"
+	glyph := ">"
 	if m.state != nil && m.state.Playing {
-		glyph = "❚❚"
+		glyph = "||"
 	}
 	btn := lipgloss.NewStyle().Background(colorAccent).Foreground(colorBlack).Bold(true).Render(" " + glyph + " ")
 
-	return sh.Render("🔀") + "   " + off.Render("◀◀") + "   " + btn + "   " + off.Render("▶▶") + "   " + rp.Render(repeatGlyph)
+	return sh.Render("⇄") + "   " + off.Render("|<") + "   " + btn + "   " + off.Render(">|") + "   " + rp.Render(repeatGlyph)
 }
 
 // progressMetrics returns the player-bar progress pieces and the bar's absolute

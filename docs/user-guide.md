@@ -16,7 +16,7 @@ A complete tour of AudioPulse's interface and controls.
 │  ██  Playlist     ││ 1 Midnight City — M83 4:04 ││ Instant Crush         │
 │ ▌██  Chill Vibes  ││ ♪ Instant Crush — …   5:37 ││ Daft Punk             │
 ╰───────────────────╯╰────────────────────────────╯╰── Up Next ────────────╯
-╭ Instant Crush — Daft Punk   🔀  ◀◀  ❚❚  ▶▶  🔁                  🔊 65% ────╮
+╭ Instant Crush — Daft Punk    ⇄  |<  ||  >|  ↻                  vol 65% ────╮
 │ 1:12 ━━━━━━━━●──────────────────────────────────────────────────────  5:37 │
 ╰────────────────────────────────────────────────────────────────────────────╯
 ```

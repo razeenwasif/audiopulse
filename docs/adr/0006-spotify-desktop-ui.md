@@ -46,9 +46,11 @@ the reference.
   hit-testing, so clicks line up with what's drawn.
 
 **Negative / trade-offs**
-- Emoji-width glyphs (🔀 🔁 🔊 ⏱) in the transport/columns depend on the
-  terminal reporting widths consistently; on terminals with different emoji
-  widths, alignment can drift by a cell.
+- The transport uses monochrome text symbols (⇄ |< > || >| ↻), not emoji.
+  Color-emoji glyphs (🔀 🔁 🔂 🔊) are drawn by the terminal in their own colors
+  regardless of styling, so they could not show the green "active" state — and
+  their width varies across terminals. A couple of decorative emoji remain
+  (🔎 in the search field, ⏱ in the column header) where colour doesn't matter.
 - Two-line library rows show fewer entries at once than the old one-line list.
 - The center "feed" is a track table rather than Spotify's cover-art card
   carousels (rendering many cover thumbnails per frame is deferred as too heavy).

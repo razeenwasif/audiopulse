@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The player-bar transport now uses monochrome text symbols (`⇄ |< > || >| ↻`,
+  with `↻1` for loop-one) instead of color emoji. Emoji are drawn by the terminal
+  in their own colors regardless of styling, so they could never show the green
+  "active" state; the monochrome symbols respect the foreground color. Volume is
+  shown as `vol N%`.
+
 ### Fixed
 - Shuffle/repeat glyphs now reflect the keypress immediately and stay lit. They
   are tracked as local intent (seeded once from the first poll) instead of being
@@ -22,8 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Shuffle / repeat shortcuts with feedback** — `s` toggles shuffle, `r` toggles
   loop-all (repeat context), and `R` toggles loop-one (repeat track). The player
-  bar glyphs turn green when active (🔂 for loop-one), updated optimistically.
-  Smart shuffle has no Web API endpoint, so `S` shows an explanation instead.
+  bar symbols (`⇄` shuffle, `↻`/`↻1` repeat) turn green when active. Smart shuffle
+  has no Web API endpoint, so `S` shows an explanation instead.
 - **Spotify-desktop visual redesign** — a top bar with a centered search field,
   two-line library rows with colored thumbnails and subtitles, a center feed with
   filter chips and a numbered track table, a 3-zone player bar with centered
