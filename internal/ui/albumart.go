@@ -12,13 +12,9 @@ import (
 	"time"
 )
 
-// Album-art dimensions in terminal cells. Each cell stacks two pixels with the
-// upper-half block, so a cell is ~1px wide × 2px tall; cellW ≈ 2·cellH keeps the
-// square cover looking square.
-const (
-	artCellW = 22
-	artCellH = 11
-)
+// artCellW is the album-art width in terminal cells. The height is derived from
+// the terminal's cell aspect ratio (see artDims) so a square cover looks square.
+const artCellW = 22
 
 // fetchAlbumArt downloads the cover at url and renders it as half-block cells.
 func fetchAlbumArt(ctx context.Context, url string, cellW, cellH int) (string, error) {

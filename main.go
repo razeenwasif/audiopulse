@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,6 +21,30 @@ import (
 	"audiopulse/internal/spotify"
 	"audiopulse/internal/ui"
 )
+
+// cellAspect resolves the terminal character-cell height/width ratio used to
+// keep album art square. Order: AUDIOPULSE_CELL_ASPECT env override → detected
+// pixel size → a sensible default for common terminals.
+func cellAspect() float64 {
+	clamp := func(f float64) float64 {
+		if f < 1.5 {
+			return 1.5
+		}
+		if f > 3.0 {
+			return 3.0
+		}
+		return f
+	}
+	if v := os.Getenv("AUDIOPULSE_CELL_ASPECT"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			return clamp(f)
+		}
+	}
+	if a, ok := terminalCellAspect(); ok {
+		return clamp(a)
+	}
+	return 2.0
+}
 
 func main() {
 	cfg := config.Load()
@@ -82,7 +107,7 @@ func runSpotify(cfg *config.Config) error {
 
 	// 4. Run the TUI (native-library noise redirected to a log).
 	restore := silenceNativeStderr()
-	p := tea.NewProgram(ui.NewSpotify(client, deviceID, user), tea.WithAltScreen())
+	p := tea.NewProgram(ui.NewSpotify(client, deviceID, user, cellAspect()), tea.WithAltScreen())
 	_, runErr := p.Run()
 	restore()
 	sup.Stop()

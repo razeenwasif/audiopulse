@@ -54,6 +54,7 @@ AudioPulse itself reads no custom environment variables. The variables that
 | ------------------- | ------------- | ------------------------------------------------- |
 | `SPOTIFY_CLIENT_ID` | AudioPulse    | Enables Spotify mode (PKCE public Client ID)      |
 | `AUDIOPULSE_GUEST`  | AudioPulse    | If set, forces Deezer guest mode even with a Client ID |
+| `AUDIOPULSE_CELL_ASPECT` | AudioPulse | Terminal cell height/width ratio for album art (default auto-detected, else `2.0`). Raise it (e.g. `2.2`) if art looks too tall, lower it (e.g. `1.8`) if too wide |
 | `TERM`              | terminal libs | Colour and capability detection                   |
 | `NO_COLOR`          | Lip Gloss     | If set, disables ANSI colour output               |
 | `COLORTERM`         | Lip Gloss     | Enables truecolor when set (e.g. `truecolor`)     |

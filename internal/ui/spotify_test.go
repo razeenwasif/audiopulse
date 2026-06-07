@@ -13,7 +13,7 @@ import (
 )
 
 func sampleSpotify() Spotify {
-	m := NewSpotify(nil, "dev123", "Tester")
+	m := NewSpotify(nil, "dev123", "Tester", 2.0)
 	m.width, m.height = 130, 34
 	m.lib = []libItem{
 		{kind: libLiked, name: "Liked Songs"},
@@ -56,9 +56,10 @@ func TestHalfBlocks(t *testing.T) {
 			img.Set(x, y, color.RGBA{uint8(x * 4), uint8(y * 4), 128, 255})
 		}
 	}
-	art := halfBlocks(img, artCellW, artCellH)
-	if lines := strings.Count(art, "\n") + 1; lines != artCellH {
-		t.Errorf("art has %d lines, want %d", lines, artCellH)
+	_, h := artDims(2.0)
+	art := halfBlocks(img, artCellW, h)
+	if lines := strings.Count(art, "\n") + 1; lines != h {
+		t.Errorf("art has %d lines, want %d", lines, h)
 	}
 	if !strings.Contains(art, "\x1b[38;2;") || !strings.Contains(art, "▀") {
 		t.Error("art missing 24-bit ANSI half-blocks")

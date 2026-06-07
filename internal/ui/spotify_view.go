@@ -184,7 +184,7 @@ func (m Spotify) renderRight() string {
 	b.WriteString("\n\n")
 
 	if m.art != "" {
-		b.WriteString(indentBlock(m.art, (tw-artCellW)/2))
+		b.WriteString(indentBlock(m.art, (tw-m.artW)/2))
 	} else {
 		// Placeholder shown until the cover loads.
 		ph := lipgloss.NewStyle().

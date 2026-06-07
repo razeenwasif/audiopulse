@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -68,8 +69,9 @@ type Spotify struct {
 	state *spotify.PlayerState
 	queue []spotify.Track
 
-	art    string // rendered album art for the current track
-	artURL string // image URL the art was rendered from
+	art        string // rendered album art for the current track
+	artURL     string // image URL the art was rendered from
+	artW, artH int    // art size in cells (height derived from cell aspect)
 
 	search textinput.Model
 
@@ -78,8 +80,9 @@ type Spotify struct {
 	err    error
 }
 
-// NewSpotify builds the Spotify UI model.
-func NewSpotify(client *spotify.Client, deviceID, user string) Spotify {
+// NewSpotify builds the Spotify UI model. cellAspect is the terminal cell
+// height/width ratio, used to keep album art square.
+func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float64) Spotify {
 	ti := textinput.New()
 	ti.Placeholder = "Search Spotify…"
 	ti.Prompt = "🔎 "
@@ -88,15 +91,35 @@ func NewSpotify(client *spotify.Client, deviceID, user string) Spotify {
 	ti.TextStyle = lipgloss.NewStyle().Foreground(colorText)
 	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
+	w, h := artDims(cellAspect)
 	return Spotify{
 		st:       newStyles(),
 		client:   client,
 		deviceID: deviceID,
 		user:     user,
 		search:   ti,
+		artW:     w,
+		artH:     h,
 		focus:    panelLibrary,
 		status:   "Loading your library…",
 	}
+}
+
+// artDims picks album-art cell dimensions so a square cover displays square:
+// width·cellW == height·cellH, i.e. height = width / (cellH/cellW).
+func artDims(cellAspect float64) (w, h int) {
+	if cellAspect <= 0 {
+		cellAspect = 2.0
+	}
+	w = artCellW
+	h = int(math.Round(float64(w) / cellAspect))
+	if h < 6 {
+		h = 6
+	}
+	if h > 16 {
+		h = 16
+	}
+	return w, h
 }
 
 func (m Spotify) Init() tea.Cmd {
@@ -194,10 +217,11 @@ func (m Spotify) searchCmd(query string) tea.Cmd {
 }
 
 func (m Spotify) loadArtCmd(url string) tea.Cmd {
+	w, h := m.artW, m.artH
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
-		art, err := fetchAlbumArt(ctx, url, artCellW, artCellH)
+		art, err := fetchAlbumArt(ctx, url, w, h)
 		return artMsg{url: url, art: art, err: err}
 	}
 }
