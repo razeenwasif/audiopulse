@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -69,6 +70,24 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case searchDebounceMsg:
+		// Only the most recent keystroke's debounce triggers a search.
+		if msg.gen == m.searchGen && strings.TrimSpace(m.search.Value()) != "" {
+			m.searching = true
+			return m, m.spotlightSearchCmd(strings.TrimSpace(m.search.Value()), msg.gen)
+		}
+		return m, nil
+
+	case spotlightResultsMsg:
+		if msg.gen == m.searchGen { // ignore stale results
+			m.searching = false
+			if msg.err == nil {
+				m.spotlightResults = msg.tracks
+				m.spotlightCursor = 0
+			}
+		}
+		return m, nil
+
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -86,27 +105,49 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// When the search box has focus, keystrokes edit the query.
+	// Spotlight search overlay: keystrokes edit the query; results update live.
 	if m.focus == panelSearch {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
-		case "enter":
-			q := m.search.Value()
-			if q == "" {
-				return m, nil
-			}
-			m.loading = true
-			m.focus = panelTracks
-			m.search.Blur()
-			return m, m.searchCmd(q)
 		case "esc":
 			m.focus = panelTracks
 			m.search.Blur()
 			return m, nil
+		case "up", "ctrl+p":
+			if m.spotlightCursor > 0 {
+				m.spotlightCursor--
+			}
+			return m, nil
+		case "down", "ctrl+n":
+			if m.spotlightCursor < len(m.spotlightResults)-1 {
+				m.spotlightCursor++
+			}
+			return m, nil
+		case "enter":
+			if len(m.spotlightResults) == 0 {
+				return m, nil
+			}
+			m.tracks = m.spotlightResults
+			m.source = trackSource{title: "Search: " + strings.TrimSpace(m.search.Value())}
+			m.trackCursor = clamp(m.spotlightCursor, 0, len(m.tracks)-1)
+			m.focus = panelTracks
+			m.search.Blur()
+			return m, m.playSelectedCmd()
 		}
+		// Typing: update the field and debounce a live search.
+		prev := m.search.Value()
 		var cmd tea.Cmd
 		m.search, cmd = m.search.Update(msg)
+		if m.search.Value() != prev {
+			m.searchGen++
+			m.spotlightCursor = 0
+			if strings.TrimSpace(m.search.Value()) == "" {
+				m.spotlightResults = nil
+				return m, cmd
+			}
+			return m, tea.Batch(cmd, m.searchDebounceCmd(m.searchGen))
+		}
 		return m, cmd
 	}
 

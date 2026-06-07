@@ -81,6 +81,12 @@ type Spotify struct {
 
 	search textinput.Model
 
+	// Spotlight-style search overlay.
+	spotlightResults []spotify.Track
+	spotlightCursor  int
+	searchGen        int // debounce/staleness generation
+	searching        bool
+
 	focus  spotifyPanel
 	status string
 	err    error
@@ -149,6 +155,13 @@ type playerMsg struct {
 	queue []spotify.Track
 }
 type actionMsg struct{ err error }
+type searchDebounceMsg struct{ gen int }
+type spotlightResultsMsg struct {
+	gen    int
+	query  string
+	tracks []spotify.Track
+	err    error
+}
 type artMsg struct {
 	url string
 	art string
@@ -213,13 +226,21 @@ func (m Spotify) loadTracksCmd(item libItem) tea.Cmd {
 	}
 }
 
-func (m Spotify) searchCmd(query string) tea.Cmd {
+// searchDebounceCmd fires after a short pause so we search once the user stops
+// typing, not on every keystroke.
+func (m Spotify) searchDebounceCmd(gen int) tea.Cmd {
+	return tea.Tick(280*time.Millisecond, func(time.Time) tea.Msg {
+		return searchDebounceMsg{gen: gen}
+	})
+}
+
+func (m Spotify) spotlightSearchCmd(query string, gen int) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		tracks, err := client.Search(ctx, query)
-		return tracksMsg{source: trackSource{title: "Search: " + query}, tracks: tracks, err: err}
+		return spotlightResultsMsg{gen: gen, query: query, tracks: tracks, err: err}
 	}
 }
 

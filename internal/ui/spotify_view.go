@@ -5,7 +5,12 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
+
+// spotlightBGCode is the (slightly elevated) opaque background of the search
+// overlay, so it reads as a panel floating above the UI.
+const spotlightBGCode = "\x1b[48;2;32;32;32m"
 
 const (
 	spotifyTopHeight    = 1
@@ -41,7 +46,101 @@ func (m Spotify) View() string {
 		m.renderPlayerBar(),
 		m.renderSpotifyHelp(),
 	)
-	return fillBG(frame, m.width, m.height)
+	out := fillBG(frame, m.width, m.height)
+
+	// Float the Spotlight search box over the UI.
+	if m.focus == panelSearch {
+		box := m.renderSpotlight()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := m.height / 5
+		if bh := lipgloss.Height(box); y+bh > m.height {
+			y = max0(m.height - bh)
+		}
+		out = overlay(out, box, max0(x), max0(y))
+	}
+	return out
+}
+
+func max0(n int) int {
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+// renderSpotlight builds the floating macOS-Spotlight-style search box.
+func (m Spotify) renderSpotlight() string {
+	boxW := clamp(m.width*3/5, 48, 76)
+	innerW := boxW - 4 // padding (4); border is outside Width
+
+	m.search.Width = innerW - 4
+	input := m.search.View() // the text input already shows the 🔎 prompt
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", innerW))
+
+	var rows []string
+	query := strings.TrimSpace(m.search.Value())
+	switch {
+	case query == "":
+		rows = append(rows, lipgloss.NewStyle().Foreground(colorFaint).Render("Type to search Spotify…"))
+	case m.searching && len(m.spotlightResults) == 0:
+		rows = append(rows, lipgloss.NewStyle().Foreground(colorFaint).Render("Searching…"))
+	case len(m.spotlightResults) == 0:
+		rows = append(rows, lipgloss.NewStyle().Foreground(colorFaint).Render("No results"))
+	default:
+		const maxRows = 8
+		for i, t := range m.spotlightResults {
+			if i >= maxRows {
+				break
+			}
+			label := truncate(t.Title+"  —  "+t.Artist, innerW-3)
+			if i == m.spotlightCursor {
+				rows = append(rows, lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("▶ "+label))
+			} else {
+				rows = append(rows, m.st.rowTitle.Render("  "+label))
+			}
+		}
+	}
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render("↑↓ navigate    ↵ play    esc close")
+
+	parts := append([]string{input, sep}, rows...)
+	parts = append(parts, "", hint)
+	body := lipgloss.JoinVertical(lipgloss.Left, parts...)
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(body)
+	return solidify(box, spotlightBGCode)
+}
+
+// overlay composites box onto base at cell (x, y), ANSI-aware.
+func overlay(base, box string, x, y int) string {
+	baseLines := strings.Split(base, "\n")
+	for i, bl := range strings.Split(box, "\n") {
+		r := y + i
+		if r < 0 || r >= len(baseLines) {
+			continue
+		}
+		bw := ansi.StringWidth(bl)
+		full := ansi.StringWidth(baseLines[r])
+		left := ansi.Cut(baseLines[r], 0, x)
+		right := ""
+		if x+bw < full {
+			right = ansi.Cut(baseLines[r], x+bw, full)
+		}
+		baseLines[r] = left + bl + right
+	}
+	return strings.Join(baseLines, "\n")
+}
+
+// solidify forces an opaque background on every cell of s so the floating box
+// isn't see-through where inner styles reset the background.
+func solidify(s, bgCode string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = bgCode + strings.ReplaceAll(ln, "\x1b[0m", "\x1b[0m"+bgCode) + "\x1b[0m"
+	}
+	return strings.Join(lines, "\n")
 }
 
 // --- top bar -----------------------------------------------------------------
@@ -53,13 +152,7 @@ func (m Spotify) renderTopBar() string {
 	pillW := m.width / 3
 	pillW = clamp(pillW, 26, 56)
 	pillStyle := lipgloss.NewStyle().Background(colorCard).Width(pillW).Padding(0, 1)
-	var content string
-	if m.focus == panelSearch {
-		m.search.Width = pillW - 4
-		content = m.search.View()
-	} else {
-		content = lipgloss.NewStyle().Background(colorCard).Foreground(colorMuted).Render("🔎  What do you want to play?")
-	}
+	content := lipgloss.NewStyle().Background(colorCard).Foreground(colorMuted).Render("🔎  Search   (press /)")
 	pill := pillStyle.Render(content)
 
 	right := lipgloss.NewStyle().Foreground(colorMuted).Render(m.user+" ▾") + " "

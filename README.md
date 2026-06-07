@@ -63,7 +63,8 @@ desktop-style layout (library · feed · now-playing · player bar).
 - ▶️ **Full transport control** — play/pause, next/prev, seek, volume, shuffle, repeat.
 - 📚 **Your library** — playlists, Liked Songs, Recently Played, and live queue.
 - 🖼️ **Album art** rendered in the terminal as 24-bit half-blocks.
-- 🔎 **Search** the Spotify catalogue (`/`) and play any result.
+- 🔎 **Spotlight search** — press `/` for a floating, macOS-Spotlight-style
+  search box with live results; arrow to a track and press Enter to play.
 - 🟢 **Spotify-green** accent theme throughout.
 - 🆓 **Deezer guest mode** — no-login preview playback when Spotify isn't configured.
 - 🔐 **PKCE OAuth** — public Client ID only, token cached locally with `0600` perms.
@@ -127,7 +128,11 @@ Full, platform-by-platform instructions live in
 | `+` / `-`       | Volume up / down                             |
 | `s`             | Toggle shuffle                               |
 | `r` / `R`       | Toggle loop-all / loop-one (repeat)          |
+| `/`             | Open Spotlight search                        |
 | `q` / `ctrl+c`  | Quit                                         |
+
+In the **Spotlight search** overlay: type to search live; `↑`/`↓` select a
+result; `enter` plays it; `esc` closes.
 
 The shuffle and repeat glyphs in the player bar turn **green** when active.
 (*Smart shuffle* is a Spotify client-only feature with no Web API endpoint, so it

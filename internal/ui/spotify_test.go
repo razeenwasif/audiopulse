@@ -181,6 +181,46 @@ func TestSmartShuffleIsInformative(t *testing.T) {
 	}
 }
 
+func TestSpotlightFlow(t *testing.T) {
+	rune := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	var m tea.Model = sampleSpotify()
+
+	// "/" opens the Spotlight overlay.
+	m, _ = m.Update(rune("/"))
+	if m.(Spotify).focus != panelSearch {
+		t.Fatal("'/' should open the Spotlight search")
+	}
+	// Typing bumps the generation and schedules a debounced search.
+	m, cmd := m.Update(rune("d"))
+	if m.(Spotify).searchGen == 0 {
+		t.Error("typing should bump searchGen")
+	}
+	if cmd == nil {
+		t.Error("typing should schedule a debounced search")
+	}
+	// Results for the current generation populate the list.
+	gen := m.(Spotify).searchGen
+	m, _ = m.Update(spotlightResultsMsg{gen: gen, tracks: []spotify.Track{
+		{Title: "A", Artist: "x"}, {Title: "B", Artist: "y"},
+	}})
+	if len(m.(Spotify).spotlightResults) != 2 {
+		t.Error("results should populate the overlay")
+	}
+	// Stale results (old generation) are ignored.
+	m, _ = m.Update(spotlightResultsMsg{gen: gen - 1, tracks: nil})
+	if len(m.(Spotify).spotlightResults) != 2 {
+		t.Error("stale results should be ignored")
+	}
+	// Enter plays the selection and loads it into the center.
+	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.(Spotify).focus == panelSearch {
+		t.Error("enter should close the Spotlight overlay")
+	}
+	if cmd == nil {
+		t.Error("enter should start playback")
+	}
+}
+
 func TestClampHelper(t *testing.T) {
 	cases := []struct{ v, lo, hi, want int }{
 		{5, 0, 10, 5}, {-1, 0, 10, 0}, {11, 0, 10, 10}, {3, 0, -1, 0},

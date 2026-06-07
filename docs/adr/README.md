@@ -19,6 +19,7 @@ history.
 | [0004](0004-build-tag-fallback-strategy.md)      | Build-tag silent-audio fallback         | Accepted |
 | [0005](0005-spotify-via-librespot.md)            | Spotify full-song playback via librespot| Accepted |
 | [0006](0006-spotify-desktop-ui.md)               | Spotify-desktop visual design           | Accepted |
+| [0007](0007-spotlight-search-overlay.md)         | Spotlight-style search overlay          | Accepted |
 
 ## Statuses
 

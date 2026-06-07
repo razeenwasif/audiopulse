@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Spotlight search** — `/` opens a floating, macOS-Spotlight-style search box
+  that overlays the UI (composited with `x/ansi`), with live debounced results;
+  `↑`/`↓` select, `enter` plays (and loads results into the center), `esc` closes
+  ([ADR-0007](docs/adr/0007-spotlight-search-overlay.md)).
 - **Shuffle / repeat shortcuts with feedback** — `s` toggles shuffle, `r` toggles
   loop-all (repeat context), and `R` toggles loop-one (repeat track). The player
   bar symbols (`⇄` shuffle, `↻`/`↻1` repeat) turn green when active. Smart shuffle
