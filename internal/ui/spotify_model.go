@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	zspotify "github.com/zmb3/spotify/v2"
 
 	"audiopulse/internal/spotify"
@@ -16,6 +18,7 @@ type spotifyPanel int
 const (
 	panelLibrary spotifyPanel = iota
 	panelTracks
+	panelSearch
 )
 
 const spotifySidebarWidth = 28
@@ -65,6 +68,11 @@ type Spotify struct {
 	state *spotify.PlayerState
 	queue []spotify.Track
 
+	art    string // rendered album art for the current track
+	artURL string // image URL the art was rendered from
+
+	search textinput.Model
+
 	focus  spotifyPanel
 	status string
 	err    error
@@ -72,18 +80,27 @@ type Spotify struct {
 
 // NewSpotify builds the Spotify UI model.
 func NewSpotify(client *spotify.Client, deviceID, user string) Spotify {
+	ti := textinput.New()
+	ti.Placeholder = "Search Spotify…"
+	ti.Prompt = "🔎 "
+	ti.CharLimit = 80
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(colorAccent)
+	ti.TextStyle = lipgloss.NewStyle().Foreground(colorText)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorAccent)
+
 	return Spotify{
 		st:       newStyles(),
 		client:   client,
 		deviceID: deviceID,
 		user:     user,
+		search:   ti,
 		focus:    panelLibrary,
 		status:   "Loading your library…",
 	}
 }
 
 func (m Spotify) Init() tea.Cmd {
-	return tea.Batch(m.loadLibraryCmd(), m.tickCmd())
+	return tea.Batch(m.loadLibraryCmd(), m.tickCmd(), textinput.Blink)
 }
 
 // --- messages ---------------------------------------------------------------
@@ -102,6 +119,11 @@ type playerMsg struct {
 	queue []spotify.Track
 }
 type actionMsg struct{ err error }
+type artMsg struct {
+	url string
+	art string
+	err error
+}
 type spotifyTickMsg time.Time
 
 // --- commands ---------------------------------------------------------------
@@ -158,6 +180,25 @@ func (m Spotify) loadTracksCmd(item libItem) tea.Cmd {
 			src = trackSource{title: item.name, contextURI: item.plURI}
 		}
 		return tracksMsg{source: src, tracks: tracks, err: err}
+	}
+}
+
+func (m Spotify) searchCmd(query string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		tracks, err := client.Search(ctx, query)
+		return tracksMsg{source: trackSource{title: "Search: " + query}, tracks: tracks, err: err}
+	}
+}
+
+func (m Spotify) loadArtCmd(url string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		art, err := fetchAlbumArt(ctx, url, artCellW, artCellH)
+		return artMsg{url: url, art: art, err: err}
 	}
 }
 

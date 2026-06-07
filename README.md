@@ -62,6 +62,8 @@ desktop-style layout (library · feed · now-playing · player bar).
 - 🗂️ **Desktop-style layout** — library, track feed, now-playing, and a player bar.
 - ▶️ **Full transport control** — play/pause, next/prev, seek, volume, shuffle, repeat.
 - 📚 **Your library** — playlists, Liked Songs, Recently Played, and live queue.
+- 🖼️ **Album art** rendered in the terminal as 24-bit half-blocks.
+- 🔎 **Search** the Spotify catalogue (`/`) and play any result.
 - 🟢 **Spotify-green** accent theme throughout.
 - 🆓 **Deezer guest mode** — no-login preview playback when Spotify isn't configured.
 - 🔐 **PKCE OAuth** — public Client ID only, token cached locally with `0600` perms.

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `make librespot` target to build/install the playback backend.
   - `SPOTIFY_CLIENT_ID` / `~/.config/audiopulse/config.json` configuration and an
     `AUDIOPULSE_GUEST` override to force Deezer mode.
+- **Album art** in the now-playing panel, rendered as 24-bit Unicode half-blocks
+  (downloaded and cached per cover URL).
+- **Spotify search** — press `/` to search the catalogue and play results.
 - Deezer preview playback is retained as an automatic **no-login guest mode**.
 - `make doctor` now also reports librespot, Client ID, and sign-in status.
 - `make install` / `make uninstall` targets: install the binary to a `PATH`

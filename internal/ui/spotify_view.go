@@ -87,11 +87,17 @@ func (m Spotify) renderLibrary() string {
 func (m Spotify) renderCenter(outerWidth int) string {
 	sw, sh, tw, th := panelDims(m.st.main, outerWidth, m.middleHeight())
 
-	header := m.source.title
-	if header == "" {
-		header = "Tracks"
+	var headerLine string
+	if m.focus == panelSearch {
+		m.search.Width = tw - 4
+		headerLine = m.search.View()
+	} else {
+		header := m.source.title
+		if header == "" {
+			header = "Tracks"
+		}
+		headerLine = m.st.title.Render(truncate(header, tw))
 	}
-	headerLine := m.st.title.Render(truncate(header, tw))
 	sub := m.st.rowMuted.Render(fmt.Sprintf("%d tracks", len(m.tracks)))
 	if m.loading {
 		sub = m.st.rowArtist.Render("Loading…")
@@ -177,13 +183,17 @@ func (m Spotify) renderRight() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(colorFaint).Bold(true).Render("NOW PLAYING"))
 	b.WriteString("\n\n")
 
-	// Cover-art placeholder (real thumbnail is a Phase 2 item).
-	art := lipgloss.NewStyle().
-		Foreground(colorFaint).
-		Border(lipgloss.RoundedBorder()).BorderForeground(colorFaint).
-		Width(tw - 2).Align(lipgloss.Center).
-		Render("\n  ♫  \n")
-	b.WriteString(art)
+	if m.art != "" {
+		b.WriteString(indentBlock(m.art, (tw-artCellW)/2))
+	} else {
+		// Placeholder shown until the cover loads.
+		ph := lipgloss.NewStyle().
+			Foreground(colorFaint).
+			Border(lipgloss.RoundedBorder()).BorderForeground(colorFaint).
+			Width(tw - 2).Align(lipgloss.Center).
+			Render("\n  ♫  \n")
+		b.WriteString(ph)
+	}
 	b.WriteString("\n\n")
 
 	if m.state != nil && m.state.Track != nil {
@@ -278,6 +288,15 @@ func (m Spotify) modeIndicators() string {
 	return s.Render(shuffle) + " " + r.Render(repeat)
 }
 
+// indentBlock prefixes every line of s with n spaces (used to center art).
+func indentBlock(s string, n int) string {
+	if n <= 0 {
+		return s
+	}
+	pad := strings.Repeat(" ", n)
+	return pad + strings.ReplaceAll(s, "\n", "\n"+pad)
+}
+
 func meter(st styles, frac float64, width int) string {
 	if width < 1 {
 		width = 1
@@ -309,6 +328,7 @@ func (m Spotify) renderSpotifyHelp() string {
 		key("+/-") + dim(" vol"),
 		key("s") + dim(" shuffle"),
 		key("r") + dim(" repeat"),
+		key("/") + dim(" search"),
 		key("q") + dim(" quit"),
 	}
 	line := "  " + strings.Join(parts, dim("  •  "))

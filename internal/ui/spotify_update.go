@@ -52,6 +52,21 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = msg.state
 		}
 		m.queue = msg.queue
+		// Load album art when the track's cover changes (only if the right
+		// panel is visible).
+		if m.width >= 112 && m.state != nil && m.state.Track != nil {
+			url := m.state.Track.ImageURL
+			if url != "" && url != m.artURL {
+				m.artURL = url
+				return m, m.loadArtCmd(url)
+			}
+		}
+		return m, nil
+
+	case artMsg:
+		if msg.err == nil && msg.url == m.artURL {
+			m.art = msg.art
+		}
 		return m, nil
 
 	case actionMsg:
@@ -68,9 +83,37 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// When the search box has focus, keystrokes edit the query.
+	if m.focus == panelSearch {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "enter":
+			q := m.search.Value()
+			if q == "" {
+				return m, nil
+			}
+			m.loading = true
+			m.focus = panelTracks
+			m.search.Blur()
+			return m, m.searchCmd(q)
+		case "esc":
+			m.focus = panelTracks
+			m.search.Blur()
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.search, cmd = m.search.Update(msg)
+		return m, cmd
+	}
+
 	switch msg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
+
+	case "/":
+		m.focus = panelSearch
+		return m, m.search.Focus()
 
 	case "tab":
 		if m.focus == panelLibrary {
