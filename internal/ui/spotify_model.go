@@ -93,7 +93,7 @@ type Spotify struct {
 	showCursor      int
 	showsLoaded     bool
 	showsLoading    bool
-	podcastView     string // "shows" | "episodes"
+	podcastFocus    string // "shows" | "episodes"
 	currentShow     spotify.Show
 	episodes        []spotify.Episode
 	episodeCursor   int
@@ -167,7 +167,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		repeat:       "off",
 		focus:        panelLibrary,
 		centerTab:    "music",
-		podcastView:  "shows",
+		podcastFocus: "shows",
 		showsLoading: true, // Init fetches saved shows up front
 		status:       "Loading your library…",
 	}

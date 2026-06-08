@@ -516,43 +516,81 @@ func (m Spotify) renderMusicPane(outerWidth int, withChips bool) string {
 	return box.Width(sw).Height(sh).Render(clipLines(body, th))
 }
 
+// podcastShowsHeight is the outer height of the shows sub-box (top half of the
+// podcast pane); the episodes sub-box below gets the remainder.
+func (m Spotify) podcastShowsHeight() int {
+	h := m.middleHeight() / 2
+	if h < 4 {
+		h = 4
+	}
+	if max := m.middleHeight() - 4; h > max {
+		h = max
+	}
+	return h
+}
+
+// renderPodcastPane stacks the shows list (top) over the episodes of the opened
+// show (bottom) — a master/detail split.
 func (m Spotify) renderPodcastPane(outerWidth int, withChips bool) string {
-	box := panelBox(m.focus == panelPodcasts, 0, 1)
-	sw, sh, tw, th := panelDims(box, outerWidth, m.middleHeight())
+	showsH := m.podcastShowsHeight()
+	epsH := m.middleHeight() - showsH
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.renderShowsBox(outerWidth, showsH, withChips),
+		m.renderEpisodesBox(outerWidth, epsH),
+	)
+}
+
+func (m Spotify) renderShowsBox(outerWidth, outerHeight int, withChips bool) string {
+	focused := m.focus == panelPodcasts && m.podcastFocus == "shows"
+	box := panelBox(focused, 0, 1)
+	sw, sh, tw, th := panelDims(box, outerWidth, outerHeight)
 
 	head := m.paneHeader("Podcasts", m.focus == panelPodcasts, withChips)
+	sub := fmt.Sprintf("Your Shows · %d", len(m.shows))
+	if m.showsLoading {
+		sub = "Loading…"
+	}
+	if m.podErr != nil {
+		sub = "⚠ unavailable"
+	}
+	subLine := m.st.rowMuted.Render(truncate(sub, tw))
 
-	var titleStr, sub, list string
-	listH := th - 4
+	listH := th - 2
 	if listH < 1 {
 		listH = 1
 	}
-	if m.podcastView == "episodes" {
-		titleStr = m.currentShow.Name
-		sub = fmt.Sprintf("esc back · %d episodes", len(m.episodes))
-		if m.episodesLoading {
-			sub = "Loading episodes…"
-		}
-		list = m.renderEpisodeList(tw, listH)
-	} else {
-		titleStr = "Your Shows"
-		sub = fmt.Sprintf("%d shows", len(m.shows))
-		if m.showsLoading {
-			sub = "Loading…"
-		}
-		list = m.renderShowList(tw, listH)
-	}
-	if m.podErr != nil {
-		sub = "⚠ podcasts unavailable"
-	}
-	titleLine := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(truncate(titleStr, tw))
-	subLine := m.st.rowMuted.Render(truncate(sub, tw))
-
-	body := lipgloss.JoinVertical(lipgloss.Left, head, titleLine, subLine, "", list)
+	body := lipgloss.JoinVertical(lipgloss.Left, head, subLine, m.renderShowList(tw, listH, focused))
 	return box.Width(sw).Height(sh).Render(clipLines(body, th))
 }
 
-func (m Spotify) renderShowList(w, h int) string {
+func (m Spotify) renderEpisodesBox(outerWidth, outerHeight int) string {
+	focused := m.focus == panelPodcasts && m.podcastFocus == "episodes"
+	box := panelBox(focused, 0, 1)
+	sw, sh, tw, th := panelDims(box, outerWidth, outerHeight)
+
+	title := "Episodes"
+	if m.currentShow.Name != "" {
+		title = m.currentShow.Name
+	}
+	head := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(truncate(title, tw))
+	sub := "Open a show (↵)"
+	if m.currentShow.Name != "" {
+		sub = fmt.Sprintf("%d episodes · esc back", len(m.episodes))
+	}
+	if m.episodesLoading {
+		sub = "Loading episodes…"
+	}
+	subLine := m.st.rowMuted.Render(truncate(sub, tw))
+
+	listH := th - 2
+	if listH < 1 {
+		listH = 1
+	}
+	body := lipgloss.JoinVertical(lipgloss.Left, head, subLine, m.renderEpisodeList(tw, listH, focused))
+	return box.Width(sw).Height(sh).Render(clipLines(body, th))
+}
+
+func (m Spotify) renderShowList(w, h int, selectable bool) string {
 	faint := func(s string) string { return lipgloss.NewStyle().Height(h).Foreground(colorFaint).Render(s) }
 	if m.showsLoading && len(m.shows) == 0 {
 		return faint("Loading your podcasts…")
@@ -572,7 +610,7 @@ func (m Spotify) renderShowList(w, h int) string {
 		if s.Publisher != "" {
 			text += " · " + s.Publisher
 		}
-		if i == m.showCursor && m.focus == panelPodcasts {
+		if i == m.showCursor && selectable {
 			b.WriteString(m.st.rowSel.Render("▶ " + truncate(text, w-2)))
 		} else {
 			b.WriteString(m.st.rowTitle.Render("  " + truncate(text, w-2)))
@@ -584,12 +622,15 @@ func (m Spotify) renderShowList(w, h int) string {
 	return lipgloss.NewStyle().Height(h).MaxHeight(h).Render(b.String())
 }
 
-func (m Spotify) renderEpisodeList(w, h int) string {
+func (m Spotify) renderEpisodeList(w, h int, selectable bool) string {
 	faint := func(s string) string { return lipgloss.NewStyle().Height(h).Foreground(colorFaint).Render(s) }
 	if m.episodesLoading && len(m.episodes) == 0 {
 		return faint("Loading episodes…")
 	}
 	if len(m.episodes) == 0 {
+		if m.currentShow.Name == "" {
+			return faint("Pick a show above,\nthen press ↵.")
+		}
 		return faint("No episodes.")
 	}
 
@@ -619,7 +660,7 @@ func (m Spotify) renderEpisodeList(w, h int) string {
 		}
 		var body, durCol string
 		switch {
-		case i == m.episodeCursor && m.focus == panelPodcasts:
+		case i == m.episodeCursor && selectable:
 			marker = m.st.rowSel.Render("▶ ")
 			body = m.st.rowSel.Render(padRight(truncate(label, textW), textW))
 			durCol = m.st.rowSel.Render(dur)

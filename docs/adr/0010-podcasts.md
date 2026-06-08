@@ -34,8 +34,11 @@ focusable (`panelTracks`, `panelPodcasts`) and join the Tab cycle; focusing a
 sub-pane sets `centerTab`, so in single-column mode Tab/shift+tab also swaps the
 visible pane. Saved shows load lazily the first time the podcast pane is focused.
 
-**Navigation.** The podcast pane is a two-level view (`podcastView`): a show list,
-and a show's episode list. `enter` drills in / plays; `esc`/`backspace` backs out.
+**Navigation.** The podcast pane is a **master/detail split**: the saved-shows
+list (top) and the opened show's episodes (bottom) are both visible. `podcastFocus`
+("shows"/"episodes") tracks which sub-box the keyboard drives and which gets the
+focus border. `enter` on a show loads its episodes and moves focus down; `enter` on
+an episode plays it; `esc`/`backspace` moves focus back up to the shows list.
 Episode playback sends a bounded window of episode URIs (reusing `maxPlayURIs`),
 so it continues through the show like a context-less music source.
 

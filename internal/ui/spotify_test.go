@@ -192,7 +192,7 @@ func TestPodcastsSplitAndEpisodes(t *testing.T) {
 
 	// Episodes view: unplayable episodes are marked and de-emphasized.
 	sp := mm.(Spotify)
-	sp.podcastView = "episodes"
+	sp.podcastFocus = "episodes"
 	sp.currentShow = spotify.Show{Name: "The Daily"}
 	sp.episodes = []spotify.Episode{
 		{Title: "Latest Episode", Playable: true, Date: "2026-06-08"},

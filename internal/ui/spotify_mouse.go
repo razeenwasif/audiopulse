@@ -21,10 +21,10 @@ const (
 func (m Spotify) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		m.scrollUnder(msg.X, -1)
+		m.scrollUnder(msg.X, msg.Y, -1)
 		return m, nil
 	case tea.MouseButtonWheelDown:
-		m.scrollUnder(msg.X, 1)
+		m.scrollUnder(msg.X, msg.Y, 1)
 		return m, nil
 	case tea.MouseButtonLeft:
 		// handled below
@@ -82,27 +82,64 @@ func (m Spotify) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
-		row := msg.Y - trackFirstRowY
 		if m.inPodcastRegion(msg.X) {
-			if cmd := m.focusPanel(panelPodcasts); cmd != nil {
-				return m, cmd // shows are loading; ignore the row this click
-			}
-			if row >= 0 {
-				return m, m.clickPodcastRow(row, listH)
-			}
-			return m, nil
+			return m, m.clickPodcast(msg.Y)
 		}
 		// Music pane.
 		m.focus = panelTracks
 		m.centerTab = "music"
 		start, end := trackWindow(m.trackCursor, len(m.tracks), listH)
-		if row >= 0 && start+row < end {
+		if row := msg.Y - trackFirstRowY; row >= 0 && start+row < end {
 			m.trackCursor = start + row
 			return m, m.playSelectedCmd()
 		}
 		return m, nil
 	}
 	return m, nil
+}
+
+// podcastEpisodesTopY is the row where the episodes sub-box begins (its border).
+func (m Spotify) podcastEpisodesTopY() int { return spotifyTopHeight + m.podcastShowsHeight() }
+
+// podcast list rows begin two header rows (heading + subtitle) below each
+// sub-box's top border.
+func (m Spotify) podcastShowsListY() int    { return spotifyTopHeight + 3 }
+func (m Spotify) podcastEpisodesListY() int { return m.podcastEpisodesTopY() + 3 }
+
+func (m Spotify) podcastListH(outerHeight int) int {
+	_, _, _, th := panelDims(panelBox(false, 0, 1), m.centerOuterWidth(), outerHeight)
+	if h := th - 2; h > 0 {
+		return h
+	}
+	return 1
+}
+
+// clickPodcast focuses the podcast sub-box under y and opens the clicked show or
+// plays the clicked episode.
+func (m *Spotify) clickPodcast(y int) tea.Cmd {
+	loadCmd := m.focusPanel(panelPodcasts)
+	if y < m.podcastEpisodesTopY() {
+		m.podcastFocus = "shows"
+		if loadCmd != nil {
+			return loadCmd // still loading saved shows; just focus
+		}
+		listH := m.podcastListH(m.podcastShowsHeight())
+		start, end := trackWindow(m.showCursor, len(m.shows), listH)
+		if row := y - m.podcastShowsListY(); row >= 0 && start+row < end {
+			m.showCursor = start + row
+			m.episodesLoading = true
+			return m.loadEpisodesCmd(m.shows[m.showCursor])
+		}
+		return loadCmd
+	}
+	m.podcastFocus = "episodes"
+	listH := m.podcastListH(m.middleHeight() - m.podcastShowsHeight())
+	start, end := trackWindow(m.episodeCursor, len(m.episodes), listH)
+	if row := y - m.podcastEpisodesListY(); row >= 0 && start+row < end {
+		m.episodeCursor = start + row
+		return m.playEpisodeCmd()
+	}
+	return nil
 }
 
 // centerHeaderY is the row of the center pane's heading (chips) line.
@@ -123,25 +160,6 @@ func (m *Spotify) clickCenterChip(x int) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// clickPodcastRow opens the clicked show, or plays the clicked episode.
-func (m *Spotify) clickPodcastRow(row, listH int) tea.Cmd {
-	if m.podcastView == "episodes" {
-		start, end := trackWindow(m.episodeCursor, len(m.episodes), listH)
-		if start+row < end {
-			m.episodeCursor = start + row
-			return m.playEpisodeCmd()
-		}
-		return nil
-	}
-	start, end := trackWindow(m.showCursor, len(m.shows), listH)
-	if start+row < end {
-		m.showCursor = start + row
-		m.episodesLoading = true
-		return m.loadEpisodesCmd(m.shows[m.showCursor])
-	}
-	return nil
-}
-
 func (m Spotify) progressRowY() int { return m.height - 3 }
 
 // inPodcastRegion reports whether x falls in the center's podcast pane.
@@ -157,12 +175,13 @@ func (m Spotify) inPodcastRegion(x int) bool {
 	return m.centerTab == "podcasts"
 }
 
-func (m *Spotify) scrollUnder(x, delta int) {
+func (m *Spotify) scrollUnder(x, y, delta int) {
 	switch {
 	case x < spotifySidebarWidth:
 		m.libCursor = clamp(m.libCursor+delta, 0, len(m.lib)-1)
 	case m.inPodcastRegion(x):
-		if m.podcastView == "episodes" {
+		// Pick the shows or episodes sub-box by row.
+		if y >= m.podcastEpisodesTopY() {
 			m.episodeCursor = clamp(m.episodeCursor+delta, 0, len(m.episodes)-1)
 		} else {
 			m.showCursor = clamp(m.showCursor+delta, 0, len(m.shows)-1)

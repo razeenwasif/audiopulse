@@ -134,7 +134,7 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.currentShow = msg.show
 		m.episodes = msg.episodes
 		m.episodeCursor = 0
-		m.podcastView = "episodes"
+		m.podcastFocus = "episodes"
 		return m, nil
 
 	case vizTickMsg:
@@ -297,7 +297,7 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.openLyricsModal()
 			return m, nil
 		case panelPodcasts:
-			if m.podcastView == "shows" {
+			if m.podcastFocus == "shows" {
 				if m.showCursor < 0 || m.showCursor >= len(m.shows) {
 					return m, nil
 				}
@@ -311,8 +311,8 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "esc", "backspace":
 		// Back out of a show's episode list to the show list.
-		if m.focus == panelPodcasts && m.podcastView == "episodes" {
-			m.podcastView = "shows"
+		if m.focus == panelPodcasts && m.podcastFocus == "episodes" {
+			m.podcastFocus = "shows"
 		}
 		return m, nil
 
@@ -404,7 +404,7 @@ func (m *Spotify) moveCursor(delta int) {
 	case panelTracks:
 		m.trackCursor = clamp(m.trackCursor+delta, 0, len(m.tracks)-1)
 	case panelPodcasts:
-		if m.podcastView == "episodes" {
+		if m.podcastFocus == "episodes" {
 			m.episodeCursor = clamp(m.episodeCursor+delta, 0, len(m.episodes)-1)
 		} else {
 			m.showCursor = clamp(m.showCursor+delta, 0, len(m.shows)-1)
@@ -419,7 +419,7 @@ func (m *Spotify) setCursor(pos int) {
 	case panelTracks:
 		m.trackCursor = clamp(pos, 0, len(m.tracks)-1)
 	case panelPodcasts:
-		if m.podcastView == "episodes" {
+		if m.podcastFocus == "episodes" {
 			m.episodeCursor = clamp(pos, 0, len(m.episodes)-1)
 		} else {
 			m.showCursor = clamp(pos, 0, len(m.shows)-1)

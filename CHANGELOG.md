@@ -49,9 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Podcasts** — the center now shows **Music** and **Podcasts** side by side when
   the terminal is wide enough, and collapses to a single pane with a Music/Podcasts
-  toggle (the chips) when narrow. The podcast pane lists your saved shows; `enter`
-  opens a show's episodes, `enter` on an episode plays it, `esc` goes back.
-  Episodes that are region-locked or externally hosted are marked `⊘` and dimmed.
+  toggle (the chips) when narrow. The podcast pane is a **master/detail split**: your
+  saved shows on top and the opened show's episodes below, both visible at once.
+  `enter` on a show opens its episodes (and focuses them); `enter` on an episode
+  plays it; `esc` moves focus back to the shows list. Episodes that are
+  region-locked or externally hosted are marked `⊘` and dimmed.
   Powered by new `SavedShows`/`ShowEpisodes` client methods (no new OAuth scope —
   `user-library-read` already covers it) ([ADR-0010](docs/adr/0010-podcasts.md)).
   Note: librespot's podcast playback is best-effort — some episodes won't decode.

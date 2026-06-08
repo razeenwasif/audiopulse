@@ -12,13 +12,13 @@ A complete tour of AudioPulse's interface and controls.
 ```
  ⌂  ♫ AudioPulse            🔎  What do you want to play?            Razeen ▾   ← top bar
 ╭ Your Library ─────╮╭ Music ────────╮╭ Podcasts ─────╮╭ Now Playing ──────────╮
-│  ██  Liked Songs  ││ Chill Vibes   ││ Your Shows    ││   ▀▀ album art ▀▀      │
+│  ██  Liked Songs  ││ Chill Vibes   ││ Your Shows ·3 ││   ▀▀ album art ▀▀      │
 │  ██  Playlist     ││ 1 Midnight…   ││ ▶ The Daily   ││ Instant Crush         │
 │ ▌██  Chill Vibes  ││ ♪ Instant…    ││   Reply All   ││ Daft Punk             │
-╰───────────────────╯│               ││               │╰── Up Next ────────────╯
-╭ Lyrics ───────────╮│               ││               │╭ Visualizer ───────────╮
-│ The city's a mess ││               ││               ││ ▃ ▅ ▂ ▆ █ ▄ ▇ ▃ ▅ ▁ ▆ │
-│ but you're my home││               ││               ││ █ ▄ ▂ ▇ ▅ ▃ ▆ ▄ ▁ ▅ █ │
+╰───────────────────╯│               │╰───────────────╯╰── Up Next ────────────╯
+╭ Lyrics ───────────╮│               │╭ The Daily ────╮╭ Visualizer ───────────╮
+│ The city's a mess ││               ││ ▶ 06-01  Ep148││ ▃ ▅ ▂ ▆ █ ▄ ▇ ▃ ▅ ▁ ▆ │
+│ but you're my home││               ││   05-18  Ep147││ █ ▄ ▂ ▇ ▅ ▃ ▆ ▄ ▁ ▅ █ │
 ╰───────────────────╯╰───────────────╯╰───────────────╯╰───────────────────────╯
 ╭ Instant Crush — Daft Punk    ⇄  |<  ||  >|  ↻                  vol 65% ────╮
 │ 1:12 ━━━━━━━━●──────────────────────────────────────────────────────  5:37 │
@@ -42,12 +42,13 @@ A complete tour of AudioPulse's interface and controls.
   toggle (the chips — click one or `tab` to it).
   - **Music** — the selected library source's tracks. The playing track is marked
     `♪`; the selected row is green.
-  - **Podcasts** — your saved shows (the ones you **Follow** in Spotify; the API
-    only returns followed/saved shows, so a podcast you've merely listened to
-    won't appear until you follow it). `enter` opens a show's episodes, `enter` on
-    an episode plays it, `esc` goes back to the show list. Episodes that are
-    region-locked or hosted off Spotify are marked `⊘` and dimmed (and may not
-    play — see below).
+  - **Podcasts** — split into **your shows** (top) and the **episodes** of the
+    opened show (bottom), both visible at once. Shows are the ones you **Follow**
+    in Spotify (the API only returns followed/saved shows, so a podcast you've
+    merely listened to won't appear until you follow it). `enter` on a show opens
+    its episodes below and moves focus there; `enter` on an episode plays it; `esc`
+    moves focus back up to the show list. Episodes that are region-locked or hosted
+    off Spotify are marked `⊘` and dimmed (and may not play — see below).
 - **Now Playing** (top right) — album art, track/artist/album, and the up-next
   queue, in a light-green-bordered panel.
 - **Visualizer** (bottom right) — a CAVA-style green spectrum that animates while
