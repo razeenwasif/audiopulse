@@ -54,8 +54,10 @@ func (m Spotify) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Library entry → open it (two rows per entry, accounting for scroll).
+	// Clicks below the library rows fall into the lyrics panel and are ignored.
 	if msg.X < spotifySidebarWidth {
-		if msg.Y >= libFirstRowY {
+		maxLibY := libFirstRowY + m.libVisible()*libItemRows
+		if msg.Y >= libFirstRowY && msg.Y < maxLibY {
 			start, _ := trackWindow(m.libCursor, len(m.lib), m.libVisible())
 			i := start + (msg.Y-libFirstRowY)/libItemRows
 			if i >= 0 && i < len(m.lib) {

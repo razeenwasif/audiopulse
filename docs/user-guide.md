@@ -15,9 +15,10 @@ A complete tour of AudioPulse's interface and controls.
 │  ██  Liked Songs  ││ Chill Vibes                ││   ▀▀ album art ▀▀      │
 │  ██  Playlist     ││ 1 Midnight City — M83 4:04 ││ Instant Crush         │
 │ ▌██  Chill Vibes  ││ ♪ Instant Crush — …   5:37 ││ Daft Punk             │
-│                   ││                            │╰── Up Next ────────────╯
-│                   ││                            │╭ Visualizer ───────────╮
-│                   ││                            ││ ▃▅▂▆█▄▇▃▅▁▆▄▂▇▅▃▆▄▁▅█ │
+╰───────────────────╯│                            │╰── Up Next ────────────╯
+╭ Lyrics ───────────╮│                            │╭ Visualizer ───────────╮
+│ The city's a mess ││                            ││ ▃ ▅ ▂ ▆ █ ▄ ▇ ▃ ▅ ▁ ▆ │
+│ but you're my home││                            ││ █ ▄ ▂ ▇ ▅ ▃ ▆ ▄ ▁ ▅ █ │
 ╰───────────────────╯╰────────────────────────────╯╰───────────────────────╯
 ╭ Instant Crush — Daft Punk    ⇄  |<  ||  >|  ↻                  vol 65% ────╮
 │ 1:12 ━━━━━━━━●──────────────────────────────────────────────────────  5:37 │
@@ -26,9 +27,14 @@ A complete tour of AudioPulse's interface and controls.
 
 - **Top bar** — brand, a centered search field (press `/` to focus it), and your
   account.
-- **Your Library** (left) — Liked Songs, Recently Played, and your playlists,
+- **Your Library** (top left) — Liked Songs, Recently Played, and your playlists,
   each with a colored thumbnail, title, and subtitle. The focused panel has a
   green border.
+- **Lyrics** (bottom left) — lyrics for the current track, from
+  [lrclib.net](https://lrclib.net) (the Spotify API has no lyrics endpoint). When
+  time-synced lyrics exist the current line is highlighted in green and scrolls
+  with playback; otherwise plain lyrics are shown. Shows "No lyrics found" or
+  "instrumental" when appropriate.
 - **Feed** (center) — filter chips, the selected source's title, and a numbered
   track table. The playing track is marked `♪`; the selected row is green.
 - **Now Playing** (top right) — album art, track/artist/album, and the up-next

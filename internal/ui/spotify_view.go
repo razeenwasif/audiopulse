@@ -34,7 +34,7 @@ func (m Spotify) View() string {
 		centerWidth -= spotifyRightWidth
 	}
 
-	panels := []string{m.renderLibrary(), m.renderCenter(centerWidth)}
+	panels := []string{m.renderLeft(), m.renderCenter(centerWidth)}
 	if showRight {
 		panels = append(panels, m.renderRight())
 	}
@@ -177,9 +177,46 @@ func threeCol(w int, left, center, right string) string {
 
 // --- library -----------------------------------------------------------------
 
-func (m Spotify) renderLibrary() string {
+// renderLeft stacks the library above the lyrics panel, filling the left column.
+func (m Spotify) renderLeft() string {
+	lyrH := m.lyricsPanelHeight()
+	if lyrH == 0 {
+		return m.renderLibrary(m.middleHeight())
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		m.renderLibrary(m.middleHeight()-lyrH),
+		m.renderLyrics(lyrH),
+	)
+}
+
+// lyricsPanelHeight is the outer height of the lyrics panel under the library,
+// or 0 when the column is too short to split sensibly.
+func (m Spotify) lyricsPanelHeight() int {
+	total := m.middleHeight()
+	h := total * 2 / 5
+	if h > 14 {
+		h = 14
+	}
+	if h < 7 {
+		h = 7
+	}
+	if h > total-8 {
+		h = total - 8
+	}
+	if h < 6 {
+		return 0
+	}
+	return h
+}
+
+// libPanelHeight is the outer height of the library panel (column minus lyrics).
+func (m Spotify) libPanelHeight() int {
+	return m.middleHeight() - m.lyricsPanelHeight()
+}
+
+func (m Spotify) renderLibrary(outerHeight int) string {
 	box := panelBox(m.focus == panelLibrary, 1, 2)
-	sw, sh, tw, th := panelDims(box, spotifySidebarWidth, m.middleHeight())
+	sw, sh, tw, th := panelDims(box, spotifySidebarWidth, outerHeight)
 
 	header := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Your Library")
 	lines := []string{header, ""}
@@ -194,12 +231,91 @@ func (m Spotify) renderLibrary() string {
 
 // libVisible is how many two-line library entries fit (after the header+blank).
 func (m Spotify) libVisible() int {
-	_, _, _, th := panelDims(panelBox(false, 1, 2), spotifySidebarWidth, m.middleHeight())
+	_, _, _, th := panelDims(panelBox(false, 1, 2), spotifySidebarWidth, m.libPanelHeight())
 	v := (th - 2) / 2
 	if v < 1 {
 		v = 1
 	}
 	return v
+}
+
+// renderLyrics draws the lyrics panel under the library. Synced lyrics follow
+// playback (current line highlighted and centered); plain lyrics show from top.
+func (m Spotify) renderLyrics(outerHeight int) string {
+	box := panelBox(false, 0, 1)
+	sw, sh, tw, th := panelDims(box, spotifySidebarWidth, outerHeight)
+
+	header := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Lyrics")
+	bodyH := th - 1
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	content := header + "\n" + m.lyricsBody(tw, bodyH)
+	return box.Width(sw).Height(sh).Render(clipLines(content, th))
+}
+
+func (m Spotify) lyricsBody(w, h int) string {
+	muted := func(s string) string { return m.st.rowMuted.Render(truncate(s, w)) }
+
+	switch m.lyricsState {
+	case "loading":
+		return muted("Loading lyrics…")
+	case "instrumental":
+		return muted("♪  instrumental")
+	case "none":
+		return muted("No lyrics found")
+	case "err":
+		return muted("Lyrics unavailable")
+	case "ready":
+		// rendered below
+	default:
+		return muted("—")
+	}
+
+	lines := m.lyricsLines
+	cur := -1
+	if m.lyricsSynced && m.state != nil {
+		cur = currentLyricLine(lines, m.state.Progress)
+	}
+
+	// Window h lines: keep the current synced line centered (and scrolling);
+	// plain lyrics start at the top.
+	start := 0
+	if m.lyricsSynced && cur >= 0 {
+		start = cur - h/2
+	}
+	if start > len(lines)-h {
+		start = len(lines) - h
+	}
+	if start < 0 {
+		start = 0
+	}
+	end := start + h
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	var b strings.Builder
+	for i := start; i < end; i++ {
+		text := lines[i].Text
+		if text == "" {
+			text = " "
+		}
+		var rendered string
+		switch {
+		case i == cur:
+			rendered = m.st.rowSel.Render(truncate(text, w)) // current line, green
+		case m.lyricsSynced && i < cur:
+			rendered = m.st.rowMuted.Render(truncate(text, w)) // already sung
+		default:
+			rendered = m.st.rowTitle.Render(truncate(text, w))
+		}
+		b.WriteString(rendered)
+		if i < end-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 // libRow renders a two-line library entry: a colored thumbnail block beside a
@@ -454,13 +570,15 @@ func (m Spotify) renderVisualizer(outerHeight int) string {
 // vizBlocks are the eighth-height vertical block runes, index 0..8.
 var vizBlocks = []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
-// renderBars renders a w×h grid of vertical bars from the current spectrum
-// levels, with a bottom-bright → top-pale green gradient.
+// renderBars renders a w×h grid of thin vertical bars (1 cell wide, separated by
+// a 1-cell gap) from the current spectrum levels, with a bottom-bright →
+// top-pale green gradient.
 func (m Spotify) renderBars(w, h int) string {
 	if w < 1 || h < 1 {
 		return ""
 	}
-	levels := m.vizLevels(w)
+	nbars := (w + 1) / 2 // a bar on even columns, a gap on odd ones
+	levels := m.vizLevels(nbars)
 	var b strings.Builder
 	for row := 0; row < h; row++ {
 		fromBottom := h - 1 - row // 0 at the bottom row
@@ -474,8 +592,12 @@ func (m Spotify) renderBars(w, h int) string {
 		}
 		style := lipgloss.NewStyle().Foreground(col)
 		var line strings.Builder
-		for i := 0; i < w; i++ {
-			eighths := int(levels[i]*float64(h)*8) - fromBottom*8
+		for c := 0; c < w; c++ {
+			if c%2 == 1 { // gap column between bars
+				line.WriteByte(' ')
+				continue
+			}
+			eighths := int(levels[c/2]*float64(h)*8) - fromBottom*8
 			if eighths <= 0 {
 				line.WriteByte(' ')
 				continue

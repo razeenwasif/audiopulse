@@ -79,7 +79,38 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.vizTicking = true
 			cmds = append(cmds, m.vizTickCmd())
 		}
+		// Fetch lyrics when the track changes.
+		if m.state != nil && m.state.Track != nil && m.state.Track.ID != m.lyricsForID {
+			t := m.state.Track
+			m.lyricsForID = t.ID
+			m.lyricsState = "loading"
+			m.lyricsLines = nil
+			m.lyricsSynced = false
+			m.lyricsInstrumental = false
+			cmds = append(cmds, m.loadLyricsCmd(*t))
+		}
 		return m, tea.Batch(cmds...)
+
+	case lyricsMsg:
+		if msg.trackID != m.lyricsForID {
+			return m, nil // track changed again; ignore stale lyrics
+		}
+		if msg.err != nil {
+			m.lyricsState = "err"
+			return m, nil
+		}
+		m.lyricsSynced = msg.res.Synced
+		m.lyricsInstrumental = msg.res.Instrumental
+		m.lyricsLines = msg.res.Lines
+		switch {
+		case msg.res.Instrumental:
+			m.lyricsState = "instrumental"
+		case len(msg.res.Lines) == 0:
+			m.lyricsState = "none"
+		default:
+			m.lyricsState = "ready"
+		}
+		return m, nil
 
 	case vizTickMsg:
 		m.vizFrame++

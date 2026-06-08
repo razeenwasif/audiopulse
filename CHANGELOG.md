@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The visualizer bars are now thin (one cell wide, separated by a one-cell gap)
+  for a cleaner spectrum look.
 - The player-bar transport now uses monochrome text symbols (`⇄ |< > || >| ↻`,
   with `↻1` for loop-one) instead of color emoji. Emoji are drawn by the terminal
   in their own colors regardless of styling, so they could never show the green
@@ -40,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Lyrics panel** — a panel below "Your Library" shows the current track's
+  lyrics, fetched from [lrclib.net](https://lrclib.net) (free, no auth; the
+  Spotify Web API has no lyrics endpoint). When time-synced (LRC) lyrics are
+  available the current line is highlighted in green and follows playback;
+  otherwise plain lyrics are shown. Falls back gracefully to "No lyrics found"
+  or "instrumental" ([ADR-0009](docs/adr/0009-lyrics-via-lrclib.md)).
 - **CAVA-style visualizer** — a green spectrum panel sits below Now Playing on the
   right, animating while a track plays and flattening when paused. AudioPulse never
   sees librespot's decoded PCM, so the spectrum is a synthesized animation driven by

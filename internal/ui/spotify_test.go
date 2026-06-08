@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
 )
 
@@ -98,6 +99,36 @@ func TestVisualizerPanel(t *testing.T) {
 	bars := m.renderBars(20, 6)
 	if strings.ContainsAny(bars, "▆▇█") {
 		t.Errorf("expected a flat baseline while paused, got tall bars: %q", bars)
+	}
+}
+
+func TestLyricsPanelHighlightsCurrentLine(t *testing.T) {
+	m := sampleSpotify() // 130×34 → left column tall enough to split
+	m.lyricsState = "ready"
+	m.lyricsSynced = true
+	m.lyricsLines = []lyrics.Line{
+		{At: 0, Text: "first line"},
+		{At: 10 * time.Second, Text: "second line"},
+		{At: 20 * time.Second, Text: "third line"},
+	}
+	m.state.Progress = 12 * time.Second // between lines 1 and 2 → current is index 1
+
+	if cur := currentLyricLine(m.lyricsLines, m.state.Progress); cur != 1 {
+		t.Fatalf("currentLyricLine = %d, want 1", cur)
+	}
+	view := m.View()
+	for _, want := range []string{"Lyrics", "second line"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q\n---\n%s", want, view)
+		}
+	}
+}
+
+func TestLyricsPanelEmptyState(t *testing.T) {
+	m := sampleSpotify()
+	m.lyricsState = "none"
+	if !strings.Contains(m.View(), "No lyrics found") {
+		t.Errorf("expected empty-state message in lyrics panel")
 	}
 }
 

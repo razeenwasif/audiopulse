@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zspotify "github.com/zmb3/spotify/v2"
 
+	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
 )
 
@@ -96,6 +98,13 @@ type Spotify struct {
 	// a fast tick while a track plays, and decays to a flat baseline when paused.
 	vizFrame   int
 	vizTicking bool // a vizTick loop is currently scheduled (avoids duplicates)
+
+	// Lyrics for the current track (from lrclib.net; see internal/lyrics).
+	lyricsLines        []lyrics.Line
+	lyricsSynced       bool
+	lyricsInstrumental bool
+	lyricsState        string      // "" | loading | ready | none | instrumental | err
+	lyricsForID        zspotify.ID // the track the lyrics are for/loading
 
 	search textinput.Model
 
@@ -192,6 +201,11 @@ type artMsg struct {
 }
 type spotifyTickMsg time.Time
 type vizTickMsg time.Time
+type lyricsMsg struct {
+	trackID zspotify.ID
+	res     lyrics.Result
+	err     error
+}
 
 // --- commands ---------------------------------------------------------------
 
@@ -315,6 +329,32 @@ func (m Spotify) loadTrackPageCmd(item libItem, offset, gen int) tea.Cmd {
 		}
 		return tracksPageMsg{gen: gen, source: src, item: item, page: page, err: err}
 	}
+}
+
+// loadLyricsCmd fetches lyrics for a track from lrclib.net. It passes the
+// primary artist (lrclib's exact match dislikes "A, B" multi-artist strings).
+func (m Spotify) loadLyricsCmd(t spotify.Track) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		artist := strings.TrimSpace(strings.SplitN(t.Artist, ",", 2)[0])
+		res, err := lyrics.Fetch(ctx, artist, t.Title, t.Album, t.Duration)
+		return lyricsMsg{trackID: t.ID, res: res, err: err}
+	}
+}
+
+// currentLyricLine returns the index of the latest synced line whose timestamp
+// has been reached, or -1 if playback is before the first line.
+func currentLyricLine(lines []lyrics.Line, progress time.Duration) int {
+	cur := -1
+	for i := range lines {
+		if lines[i].At <= progress {
+			cur = i
+		} else {
+			break
+		}
+	}
+	return cur
 }
 
 // searchDebounceCmd fires after a short pause so we search once the user stops
