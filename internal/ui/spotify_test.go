@@ -293,6 +293,31 @@ func TestQueuePollingAndCadence(t *testing.T) {
 	}
 }
 
+func TestAddToQueue(t *testing.T) {
+	m := sampleSpotify() // focus is panelTracks with 2 tracks
+	m.tracks[0].ID = "trk1"
+	m.trackCursor = 0
+
+	mm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	sp := mm.(Spotify)
+	if cmd == nil {
+		t.Fatal("'a' should queue the selected track")
+	}
+	if !strings.Contains(strings.ToLower(sp.status), "queue") {
+		t.Errorf("status = %q, want a queue confirmation", sp.status)
+	}
+	if !sp.queueDirty {
+		t.Error("queueing should mark the up-next queue dirty")
+	}
+
+	// 'a' on a non-track pane is a no-op.
+	m.focus = panelLibrary
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	if cmd != nil {
+		t.Error("'a' should do nothing when the music pane isn't focused")
+	}
+}
+
 func TestWrapText(t *testing.T) {
 	if got := wrapText("alpha beta gamma", 11); len(got) != 2 || got[0] != "alpha beta" || got[1] != "gamma" {
 		t.Errorf("wrapText word-wrap = %q, want [alpha beta gamma]", got)

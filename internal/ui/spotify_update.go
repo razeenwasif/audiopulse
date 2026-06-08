@@ -347,6 +347,14 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "a":
+		if cmd := m.queueSelectedCmd(); cmd != nil {
+			m.status = "Added to queue."
+			m.queueDirty = true // reflect it in Up Next on the next poll
+			return m, cmd
+		}
+		return m, nil
+
 	case " ", "p":
 		return m, m.togglePlay()
 

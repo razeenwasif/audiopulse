@@ -1073,6 +1073,7 @@ func (m Spotify) renderSpotifyHelp() string {
 		key("tab") + dim(" panel"),
 		key("↑↓") + dim(" move"),
 		key("enter") + dim(" open/play"),
+		key("a") + dim(" queue"),
 		key("space") + dim(" pause"),
 		key("n/b") + dim(" next/prev"),
 		key("←→") + dim(" seek"),

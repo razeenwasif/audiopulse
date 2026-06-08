@@ -61,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Add to queue** — press `a` on a selected track to queue it after the current
+  one (shows in Up Next on the next poll). Track-only for now (the Web API queue
+  helper doesn't take episode URIs).
 - **Podcasts** — the center now shows **Music** and **Podcasts** side by side when
   the terminal is wide enough, and collapses to a single pane with a Music/Podcasts
   toggle (the chips) when narrow. The podcast pane is a **master/detail split**: your

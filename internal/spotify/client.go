@@ -403,6 +403,16 @@ func (c *Client) PlayTracksAt(ctx context.Context, deviceID string, uris []zspot
 	return c.api.PlayOpt(ctx, opt)
 }
 
+// AddToQueue queues a track to play after the current one, on the given device.
+func (c *Client) AddToQueue(ctx context.Context, trackID zspotify.ID, deviceID string) error {
+	var opt *zspotify.PlayOptions
+	if deviceID != "" {
+		did := zspotify.ID(deviceID)
+		opt = &zspotify.PlayOptions{DeviceID: &did}
+	}
+	return c.api.QueueSongOpt(ctx, trackID, opt)
+}
+
 // Resume resumes playback (on a device if given).
 func (c *Client) Resume(ctx context.Context, deviceID string) error {
 	if deviceID == "" {

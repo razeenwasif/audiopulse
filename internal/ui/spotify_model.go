@@ -691,6 +691,19 @@ func (m Spotify) playSelectedCmd() tea.Cmd {
 	}
 }
 
+// queueSelectedCmd adds the selected music track to the play queue. Returns nil
+// when the music pane isn't focused or nothing is selected (queueing is
+// track-only; the Web API helper doesn't take episode URIs).
+func (m Spotify) queueSelectedCmd() tea.Cmd {
+	if m.focus != panelTracks || m.trackCursor < 0 || m.trackCursor >= len(m.tracks) {
+		return nil
+	}
+	client := m.client
+	id := m.tracks[m.trackCursor].ID
+	deviceID := m.deviceID
+	return m.action(func(ctx context.Context) error { return client.AddToQueue(ctx, id, deviceID) })
+}
+
 // action wraps a player control call into a command.
 func (m Spotify) action(fn func(ctx context.Context) error) tea.Cmd {
 	return func() tea.Msg {
