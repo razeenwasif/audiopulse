@@ -157,18 +157,19 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 
 	w, h := artDims(cellAspect)
 	return Spotify{
-		st:          newStyles(),
-		client:      client,
-		deviceID:    deviceID,
-		user:        user,
-		search:      ti,
-		artW:        w,
-		artH:        h,
-		repeat:      "off",
-		focus:       panelLibrary,
-		centerTab:   "music",
-		podcastView: "shows",
-		status:      "Loading your library…",
+		st:           newStyles(),
+		client:       client,
+		deviceID:     deviceID,
+		user:         user,
+		search:       ti,
+		artW:         w,
+		artH:         h,
+		repeat:       "off",
+		focus:        panelLibrary,
+		centerTab:    "music",
+		podcastView:  "shows",
+		showsLoading: true, // Init fetches saved shows up front
+		status:       "Loading your library…",
 	}
 }
 
@@ -190,7 +191,9 @@ func artDims(cellAspect float64) (w, h int) {
 }
 
 func (m Spotify) Init() tea.Cmd {
-	return tea.Batch(m.loadLibraryCmd(), m.tickCmd(), textinput.Blink)
+	// Load saved podcasts up front too, so the podcast pane is populated even in
+	// the side-by-side layout where it's visible without being focused.
+	return tea.Batch(m.loadLibraryCmd(), m.loadShowsCmd(), m.tickCmd(), textinput.Blink)
 }
 
 // --- messages ---------------------------------------------------------------

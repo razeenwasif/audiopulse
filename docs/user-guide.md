@@ -42,7 +42,9 @@ A complete tour of AudioPulse's interface and controls.
   toggle (the chips — click one or `tab` to it).
   - **Music** — the selected library source's tracks. The playing track is marked
     `♪`; the selected row is green.
-  - **Podcasts** — your saved shows. `enter` opens a show's episodes, `enter` on
+  - **Podcasts** — your saved shows (the ones you **Follow** in Spotify; the API
+    only returns followed/saved shows, so a podcast you've merely listened to
+    won't appear until you follow it). `enter` opens a show's episodes, `enter` on
     an episode plays it, `esc` goes back to the show list. Episodes that are
     region-locked or hosted off Spotify are marked `⊘` and dimmed (and may not
     play — see below).

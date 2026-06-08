@@ -559,9 +559,9 @@ func (m Spotify) renderShowList(w, h int) string {
 	}
 	if len(m.shows) == 0 {
 		if m.podErr != nil {
-			return faint("Couldn't load podcasts.")
+			return faint("Couldn't load podcasts:\n" + truncate(m.podErr.Error(), w))
 		}
-		return faint("No saved podcasts.")
+		return faint("No saved podcasts.\nFollow a show in Spotify\nto see it here.")
 	}
 
 	start, end := trackWindow(m.showCursor, len(m.shows), h)

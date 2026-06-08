@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shown as `vol N%`.
 
 ### Fixed
+- Saved podcasts now load at startup, so the Podcasts pane is populated even in
+  the side-by-side layout where it's visible without being focused (previously it
+  only loaded when you Tabbed into it). The empty state now explains that you need
+  to **Follow a show in Spotify** for it to appear (the API's `/me/shows` only
+  returns followed/saved shows).
 - Playlists and Liked Songs now list **all** their tracks. The Web API client
   followed only the first response page, so any playlist or the saved-tracks
   collection was capped at one page (≤100 / 50 items). Tracks now **stream in the
