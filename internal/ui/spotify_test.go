@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"strings"
@@ -229,6 +230,32 @@ func TestCenterToggleWhenNarrow(t *testing.T) {
 	}
 	if strings.Contains(v, "Redbone") {
 		t.Error("music list should be hidden on the podcast tab")
+	}
+}
+
+func TestDeviceRecovery(t *testing.T) {
+	if !isDeviceError(errors.New("Device not found")) {
+		t.Error("should classify a device error")
+	}
+	if isDeviceError(errors.New("rate limited")) {
+		t.Error("non-device error misclassified as device error")
+	}
+
+	m := sampleSpotify()
+	// A device error schedules recovery and says so, instead of a generic fail.
+	mm, cmd := m.Update(actionMsg{err: errors.New("Device not found")})
+	sp := mm.(Spotify)
+	if cmd == nil {
+		t.Error("a device error should schedule device recovery")
+	}
+	if !strings.Contains(strings.ToLower(sp.status), "reconnect") {
+		t.Errorf("status = %q, want a reconnecting message", sp.status)
+	}
+
+	// A recovered device id is adopted.
+	mm, _ = sp.Update(deviceMsg{id: "newdevice123"})
+	if got := mm.(Spotify).deviceID; got != "newdevice123" {
+		t.Errorf("recovered device id = %q, want newdevice123", got)
 	}
 }
 

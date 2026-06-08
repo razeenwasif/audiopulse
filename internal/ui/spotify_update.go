@@ -172,7 +172,23 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
+			// A "device not found / no active device" error usually means
+			// librespot restarted or the Connect device dropped — re-resolve it.
+			if isDeviceError(msg.err) {
+				m.status = "Playback device lost — reconnecting…"
+				return m, m.recoverDeviceCmd()
+			}
 			m.status = "Playback action failed."
+		}
+		return m, m.pollCmd()
+
+	case deviceMsg:
+		if msg.id != "" {
+			m.deviceID = msg.id
+			m.err = nil
+			m.status = "Reconnected to the playback device."
+		} else {
+			m.status = "Playback device unavailable — is librespot running?"
 		}
 		return m, m.pollCmd()
 
@@ -480,6 +496,16 @@ func (m *Spotify) openLyricsModal() {
 	m.lyricsModal = true
 	m.lyricsFollow = true
 	m.lyricsScroll = m.lyricsModalStart()
+}
+
+// isDeviceError reports whether err looks like a Spotify "no active device" or
+// "device not found" failure, which warrants re-resolving the librespot device.
+func isDeviceError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "device") || strings.Contains(s, "no active")
 }
 
 func clamp(v, lo, hi int) int {

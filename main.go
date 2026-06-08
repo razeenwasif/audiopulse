@@ -92,10 +92,13 @@ func runSpotify(cfg *config.Config) error {
 	if err := sup.EnsureCredentials(ctx); err != nil {
 		return err
 	}
-	if err := sup.Start(); err != nil {
-		return err
-	}
-	defer sup.Stop()
+
+	// Supervise librespot for the lifetime of the app: it restarts on crash, and
+	// cancelling supCtx kills it. We wait on done so the child is reaped on exit.
+	supCtx, cancelSup := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { sup.Run(supCtx); close(done) }()
+	defer func() { cancelSup(); <-done }()
 
 	// 3. Find the librespot device and make it the active one.
 	fmt.Println("Connecting the AudioPulse playback device…")
@@ -110,11 +113,7 @@ func runSpotify(cfg *config.Config) error {
 	p := tea.NewProgram(ui.NewSpotify(client, deviceID, user, cellAspect()), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, runErr := p.Run()
 	restore()
-	sup.Stop()
-	if runErr != nil {
-		return runErr
-	}
-	return nil
+	return runErr
 }
 
 // connectSpotify builds an authorized client, re-authorizing once if a cached

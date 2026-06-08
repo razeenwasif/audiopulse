@@ -23,6 +23,7 @@ history.
 | [0008](0008-synthesized-visualizer.md)           | Synthesized (non-FFT) audio visualizer  | Accepted |
 | [0009](0009-lyrics-via-lrclib.md)                | Lyrics via lrclib.net                    | Accepted |
 | [0010](0010-podcasts.md)                         | Podcasts (saved shows + episodes)       | Accepted |
+| [0011](0011-resilient-playback.md)               | Resilient playback (supervision+recovery)| Accepted |
 
 ## Statuses
 

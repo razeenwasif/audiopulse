@@ -24,7 +24,6 @@ type Supervisor struct {
 	bin      string
 	cacheDir string
 	logPath  string
-	cmd      *exec.Cmd
 }
 
 // Find locates the librespot binary on PATH or in common install locations.
@@ -127,34 +126,93 @@ func (s *Supervisor) EnsureCredentials(ctx context.Context) error {
 	}
 }
 
-// Start launches the long-lived device process using cached credentials,
-// writing logs to LogPath(). Call Stop on shutdown.
-func (s *Supervisor) Start() error {
-	if s.cmd != nil {
-		return errors.New("librespot already started")
-	}
-	logFile, err := os.Create(s.logPath)
-	if err != nil {
-		return fmt.Errorf("creating librespot log: %w", err)
-	}
+// Run launches the device process and keeps it alive, restarting it with
+// exponential backoff if it exits unexpectedly, until ctx is cancelled. It is
+// meant to run in its own goroutine for the lifetime of the app; cancelling ctx
+// kills the child and returns. Logs (including restart notices) go to LogPath().
+func (s *Supervisor) Run(ctx context.Context) {
+	const (
+		minBackoff   = time.Second
+		maxBackoff   = 30 * time.Second
+		healthyAfter = 10 * time.Second // a child that ran this long resets backoff
+	)
+	backoff := minBackoff
+	for {
+		start := time.Now()
+		cmd, logFile, err := s.startOnce()
+		if err != nil {
+			s.logf("could not start librespot: %v", err)
+			if !sleepCtx(ctx, backoff) {
+				return
+			}
+			backoff = capDur(backoff*2, maxBackoff)
+			continue
+		}
 
+		exited := make(chan error, 1)
+		go func() { exited <- cmd.Wait() }()
+
+		select {
+		case <-ctx.Done():
+			_ = cmd.Process.Kill()
+			<-exited
+			logFile.Close()
+			return
+		case werr := <-exited:
+			logFile.Close()
+			if ctx.Err() != nil {
+				return
+			}
+			if time.Since(start) >= healthyAfter {
+				backoff = minBackoff // ran fine for a while → recover quickly
+			}
+			s.logf("librespot exited (%v); restarting in %s", werr, backoff)
+			if !sleepCtx(ctx, backoff) {
+				return
+			}
+			backoff = capDur(backoff*2, maxBackoff)
+		}
+	}
+}
+
+// startOnce launches a single librespot process, appending output to the log.
+func (s *Supervisor) startOnce() (*exec.Cmd, *os.File, error) {
+	logFile, err := os.OpenFile(s.logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating librespot log: %w", err)
+	}
 	cmd := exec.Command(s.bin, s.baseArgs()...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
-		return fmt.Errorf("starting librespot: %w", err)
+		return nil, nil, fmt.Errorf("starting librespot: %w", err)
 	}
-	s.cmd = cmd
-	return nil
+	return cmd, logFile, nil
 }
 
-// Stop terminates the librespot process if running.
-func (s *Supervisor) Stop() {
-	if s.cmd == nil || s.cmd.Process == nil {
+func (s *Supervisor) logf(format string, a ...any) {
+	f, err := os.OpenFile(s.logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
 		return
 	}
-	_ = s.cmd.Process.Kill()
-	_ = s.cmd.Wait()
-	s.cmd = nil
+	defer f.Close()
+	fmt.Fprintf(f, "[audiopulse %s] "+format+"\n", append([]any{time.Now().Format("15:04:05")}, a...)...)
+}
+
+func capDur(d, max time.Duration) time.Duration {
+	if d > max {
+		return max
+	}
+	return d
+}
+
+// sleepCtx sleeps for d or until ctx is cancelled; it returns false if cancelled.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
+	}
 }

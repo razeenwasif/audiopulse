@@ -66,6 +66,15 @@ docs/, docs/adr/                   user docs + Architecture Decision Records (00
 PulseAudio); the Web API only sends play/pause/seek/next/volume and reads
 now-playing. The "AudioPulse" device is discovered via `WaitForDevice`.
 
+**Resilient playback (ADR-0011):** librespot is supervised by `Supervisor.Run(ctx)`
+(goroutine in `main.go`) — auto-restarts on crash with exponential backoff
+(1s→30s, reset after a healthy 10s run); `main` cancels the ctx + waits on `done`
+to reap it on exit. The UI recovers a lost/stale device independently: a
+device-shaped `actionMsg` error (`isDeviceError`) triggers `recoverDeviceCmd`
+→ `Client.FindDevice` by name → transfer → updates `m.deviceID`. Already handled
+before this: 429 backoff (`WithRetry(true)`), OAuth auto-refresh, poll errors
+ignored.
+
 ## Environment specifics (so audio works on this machine)
 
 - **WSL2 has no ALSA card.** Audio is routed ALSA → PulseAudio (WSLg) → Windows.

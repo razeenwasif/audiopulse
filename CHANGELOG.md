@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "active" state; the monochrome symbols respect the foreground color. Volume is
   shown as `vol N%`.
 
+### Changed
+- **librespot is now supervised**: if the playback device process crashes it is
+  automatically restarted with exponential backoff (capped at 30s) for the life
+  of the app, instead of playback silently dying. Logs append across restarts.
+- **Playback recovers from a lost device**: a "device not found / no active
+  device" error now re-resolves the "AudioPulse" Connect device by name and
+  transfers playback back to it (handles librespot restarts and device drops),
+  rather than every command failing against a stale device id.
+
 ### Fixed
 - Saved podcasts now load at startup, so the Podcasts pane is populated even in
   the side-by-side layout where it's visible without being focused (previously it

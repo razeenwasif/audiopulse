@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zspotify "github.com/zmb3/spotify/v2"
 
+	"audiopulse/internal/config"
 	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
 )
@@ -226,6 +227,7 @@ type episodesMsg struct {
 	err      error
 }
 type actionMsg struct{ err error }
+type deviceMsg struct{ id string } // recovered librespot device id ("" = not found)
 type searchDebounceMsg struct{ gen int }
 type spotlightResultsMsg struct {
 	gen    int
@@ -602,6 +604,23 @@ func (m Spotify) pollCmd() tea.Cmd {
 		state, _ := client.State(ctx)
 		queue, _ := client.Queue(ctx)
 		return playerMsg{state: state, queue: queue}
+	}
+}
+
+// recoverDeviceCmd re-resolves the "AudioPulse" device by name (after librespot
+// restarts or the device drops) and transfers playback back to it, returning the
+// new device id. Used to recover from "device not found" playback errors.
+func (m Spotify) recoverDeviceCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		id, err := client.FindDevice(ctx, config.DeviceName)
+		if err != nil || id == "" {
+			return deviceMsg{} // not back yet; UI keeps the old id
+		}
+		_ = client.Transfer(ctx, id, true) // make it active again
+		return deviceMsg{id: id}
 	}
 }
 

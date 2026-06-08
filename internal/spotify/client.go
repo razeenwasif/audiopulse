@@ -333,6 +333,22 @@ func (c *Client) Devices(ctx context.Context) ([]Device, error) {
 	return out, nil
 }
 
+// FindDevice returns the ID of a currently-available device with the given name,
+// or "" if none is present right now (single-shot, no waiting). Used to
+// re-resolve the librespot device after a restart or drop.
+func (c *Client) FindDevice(ctx context.Context, name string) (string, error) {
+	devices, err := c.Devices(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, d := range devices {
+		if d.Name == name {
+			return d.ID, nil
+		}
+	}
+	return "", nil
+}
+
 // WaitForDevice polls until a device with the given name appears, returning its
 // ID. Used to discover the librespot "AudioPulse" device after it connects.
 func (c *Client) WaitForDevice(ctx context.Context, name string, timeout time.Duration) (string, error) {
