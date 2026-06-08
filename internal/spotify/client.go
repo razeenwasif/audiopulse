@@ -40,6 +40,27 @@ type Playlist struct {
 	Count int
 }
 
+// Show is a saved podcast.
+type Show struct {
+	ID        zspotify.ID
+	URI       zspotify.URI
+	Name      string
+	Publisher string
+	ImageURL  string
+}
+
+// Episode is a single podcast episode.
+type Episode struct {
+	ID       zspotify.ID
+	URI      zspotify.URI
+	Title    string
+	ShowName string
+	Date     string // release date, e.g. "2026-06-01"
+	Duration time.Duration
+	ImageURL string
+	Playable bool // false → region-locked / externally hosted; may not play
+}
+
 // Device is a Spotify Connect playback device.
 type Device struct {
 	ID     string
@@ -180,6 +201,75 @@ func newTrackPage(tracks []Track, offset, raw, total int) TrackPage {
 		next:   next,
 		more:   raw > 0 && next < total,
 	}
+}
+
+// maxShowEpisodes bounds how many episodes are fetched per show (most-recent
+// first); shows can have thousands and only the recent ones matter here.
+const maxShowEpisodes = 200
+
+// SavedShows returns the user's saved podcasts, following pagination.
+func (c *Client) SavedShows(ctx context.Context) ([]Show, error) {
+	page, err := c.api.CurrentUsersShows(ctx, zspotify.Limit(50))
+	if err != nil {
+		return nil, err
+	}
+	var out []Show
+	for {
+		for i := range page.Shows {
+			s := &page.Shows[i]
+			out = append(out, Show{
+				ID:        s.ID,
+				URI:       s.URI,
+				Name:      s.Name,
+				Publisher: s.Publisher,
+				ImageURL:  firstImageURL(s.Images),
+			})
+		}
+		if len(out) >= maxLibraryItems {
+			break
+		}
+		if err := c.api.NextPage(ctx, page); err != nil {
+			if errors.Is(err, zspotify.ErrNoMorePages) {
+				break
+			}
+			return out, err
+		}
+	}
+	return out, nil
+}
+
+// ShowEpisodes returns a show's episodes (most-recent first), up to a cap.
+func (c *Client) ShowEpisodes(ctx context.Context, id zspotify.ID) ([]Episode, error) {
+	page, err := c.api.GetShowEpisodes(ctx, string(id), zspotify.Limit(50))
+	if err != nil {
+		return nil, err
+	}
+	var out []Episode
+	for {
+		for i := range page.Episodes {
+			e := &page.Episodes[i]
+			out = append(out, Episode{
+				ID:       e.ID,
+				URI:      e.URI,
+				Title:    e.Name,
+				ShowName: e.Show.Name,
+				Date:     e.ReleaseDate,
+				Duration: time.Duration(e.Duration_ms) * time.Millisecond,
+				ImageURL: firstImageURL(e.Images),
+				Playable: e.IsPlayable,
+			})
+		}
+		if len(out) >= maxShowEpisodes {
+			break
+		}
+		if err := c.api.NextPage(ctx, page); err != nil {
+			if errors.Is(err, zspotify.ErrNoMorePages) {
+				break
+			}
+			return out, err
+		}
+	}
+	return out, nil
 }
 
 // RecentlyPlayed returns recently played tracks.
@@ -393,6 +483,13 @@ func simpleToTrack(t *zspotify.SimpleTrack) Track {
 		Duration: time.Duration(t.Duration) * time.Millisecond,
 		Artist:   joinArtists(t.Artists),
 	}
+}
+
+func firstImageURL(images []zspotify.Image) string {
+	if len(images) > 0 {
+		return images[0].URL
+	}
+	return ""
 }
 
 func joinArtists(artists []zspotify.SimpleArtist) string {

@@ -29,10 +29,7 @@ func (m Spotify) View() string {
 	}
 
 	showRight := m.width >= 112
-	centerWidth := m.width - spotifySidebarWidth
-	if showRight {
-		centerWidth -= spotifyRightWidth
-	}
+	centerWidth := m.centerOuterWidth()
 
 	panels := []string{m.renderLeft(), m.renderCenter(centerWidth)}
 	if showRight {
@@ -56,6 +53,14 @@ func (m Spotify) View() string {
 		if bh := lipgloss.Height(box); y+bh > m.height {
 			y = max0(m.height - bh)
 		}
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
+	// Float the full-lyrics pane, centered.
+	if m.lyricsModal {
+		box := m.renderLyricsModal()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
 		out = overlay(out, box, max0(x), max0(y))
 	}
 	return out
@@ -103,6 +108,73 @@ func (m Spotify) renderSpotlight() string {
 	hint := lipgloss.NewStyle().Foreground(colorFaint).Render("↑↓ navigate    ↵ play    esc close")
 
 	parts := append([]string{input, sep}, rows...)
+	parts = append(parts, "", hint)
+	body := lipgloss.JoinVertical(lipgloss.Left, parts...)
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(body)
+	return solidify(box, spotlightBGCode)
+}
+
+// renderLyricsModal builds the floating, word-wrapped full-lyrics pane.
+func (m Spotify) renderLyricsModal() string {
+	boxW := m.lyricsModalWidth()
+	innerW := boxW - 4 // padding (2 each side); border is outside Width
+
+	title := "Lyrics"
+	if m.state != nil && m.state.Track != nil {
+		title = m.state.Track.Title + " — " + m.state.Track.Artist
+	}
+	header := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render(truncate(title, innerW))
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", innerW))
+
+	disp, _ := m.lyricsModalLines(innerW)
+	bodyH := m.lyricsModalBodyH()
+	if bodyH > len(disp) {
+		bodyH = len(disp)
+	}
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	start := m.lyricsModalStart()
+	end := start + bodyH
+	if end > len(disp) {
+		end = len(disp)
+	}
+
+	rows := make([]string, 0, bodyH)
+	for i := start; i < end; i++ {
+		text := disp[i].text
+		if text == "" {
+			text = " "
+		}
+		if disp[i].current {
+			rows = append(rows, lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render(text))
+		} else {
+			rows = append(rows, m.st.rowTitle.Render(text))
+		}
+	}
+	// Pad to a stable height so the box doesn't jump as lines wrap/scroll.
+	for len(rows) < bodyH {
+		rows = append(rows, " ")
+	}
+
+	hintText := "↑↓ scroll · esc close"
+	if len(disp) > bodyH {
+		hintText = fmt.Sprintf("%d–%d of %d · ↑↓ scroll · g/G ends · esc close", start+1, end, len(disp))
+	}
+	if m.lyricsSynced {
+		state := "off"
+		if m.lyricsFollow {
+			state = "on"
+		}
+		hintText += " · f follow:" + state
+	}
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render(truncate(hintText, innerW))
+
+	parts := append([]string{header, sep}, rows...)
 	parts = append(parts, "", hint)
 	body := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
@@ -242,10 +314,15 @@ func (m Spotify) libVisible() int {
 // renderLyrics draws the lyrics panel under the library. Synced lyrics follow
 // playback (current line highlighted and centered); plain lyrics show from top.
 func (m Spotify) renderLyrics(outerHeight int) string {
-	box := panelBox(false, 0, 1)
+	focused := m.focus == panelLyrics
+	box := panelBox(focused, 0, 1)
 	sw, sh, tw, th := panelDims(box, spotifySidebarWidth, outerHeight)
 
-	header := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Lyrics")
+	label := "Lyrics"
+	if focused {
+		label += "  ↵ expand"
+	}
+	header := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(truncate(label, tw))
 	bodyH := th - 1
 	if bodyH < 1 {
 		bodyH = 1
@@ -255,21 +332,8 @@ func (m Spotify) renderLyrics(outerHeight int) string {
 }
 
 func (m Spotify) lyricsBody(w, h int) string {
-	muted := func(s string) string { return m.st.rowMuted.Render(truncate(s, w)) }
-
-	switch m.lyricsState {
-	case "loading":
-		return muted("Loading lyrics…")
-	case "instrumental":
-		return muted("♪  instrumental")
-	case "none":
-		return muted("No lyrics found")
-	case "err":
-		return muted("Lyrics unavailable")
-	case "ready":
-		// rendered below
-	default:
-		return muted("—")
+	if m.lyricsState != "ready" {
+		return m.st.rowMuted.Render(truncate(lyricsStateText(m.lyricsState), w))
 	}
 
 	lines := m.lyricsLines
@@ -374,11 +438,53 @@ func librarySubtitle(it libItem) string {
 
 // --- center ------------------------------------------------------------------
 
+// centerOuterWidth is the full width available to the center column.
+func (m Spotify) centerOuterWidth() int {
+	w := m.width - spotifySidebarWidth
+	if m.width >= 112 {
+		w -= spotifyRightWidth
+	}
+	return w
+}
+
+// centerSplit reports whether the center shows music and podcasts side by side.
+func (m Spotify) centerSplit() bool { return m.centerOuterWidth() >= centerSplitMin }
+
+// renderCenter lays out the center column: music | podcasts side by side when
+// wide enough, otherwise a single pane toggled by the Music/Podcasts chips.
 func (m Spotify) renderCenter(outerWidth int) string {
+	if m.centerSplit() {
+		leftW := outerWidth / 2
+		rightW := outerWidth - leftW
+		return lipgloss.JoinHorizontal(lipgloss.Top,
+			m.renderMusicPane(leftW, false),
+			m.renderPodcastPane(rightW, false),
+		)
+	}
+	if m.centerTab == "podcasts" {
+		return m.renderPodcastPane(outerWidth, true)
+	}
+	return m.renderMusicPane(outerWidth, true)
+}
+
+// paneHeader renders a pane's heading row — either the Music/Podcasts toggle
+// chips (single-column mode) or a plain label that greens when focused.
+func (m Spotify) paneHeader(label string, focused, withChips bool) string {
+	if withChips {
+		return m.renderChips()
+	}
+	st := lipgloss.NewStyle().Bold(true).Foreground(colorText)
+	if focused {
+		st = st.Foreground(colorAccentHi)
+	}
+	return st.Render(label)
+}
+
+func (m Spotify) renderMusicPane(outerWidth int, withChips bool) string {
 	box := panelBox(m.focus == panelTracks, 0, 1)
 	sw, sh, tw, th := panelDims(box, outerWidth, m.middleHeight())
 
-	chips := m.renderChips()
+	head := m.paneHeader("Music", m.focus == panelTracks, withChips)
 
 	title := m.source.title
 	if title == "" {
@@ -400,20 +506,152 @@ func (m Spotify) renderCenter(outerWidth int) string {
 	}
 	cols := m.columnsHeader(tw, m.st.rowMuted.Render(truncate(sub, tw)))
 
-	listH := th - 4 // chips, title, columns, blank
+	listH := th - 4 // header, title, columns, blank
 	if listH < 1 {
 		listH = 1
 	}
 	list := m.renderTrackList(tw, listH)
 
-	body := lipgloss.JoinVertical(lipgloss.Left, chips, titleLine, cols, "", list)
+	body := lipgloss.JoinVertical(lipgloss.Left, head, titleLine, cols, "", list)
 	return box.Width(sw).Height(sh).Render(clipLines(body, th))
 }
 
+func (m Spotify) renderPodcastPane(outerWidth int, withChips bool) string {
+	box := panelBox(m.focus == panelPodcasts, 0, 1)
+	sw, sh, tw, th := panelDims(box, outerWidth, m.middleHeight())
+
+	head := m.paneHeader("Podcasts", m.focus == panelPodcasts, withChips)
+
+	var titleStr, sub, list string
+	listH := th - 4
+	if listH < 1 {
+		listH = 1
+	}
+	if m.podcastView == "episodes" {
+		titleStr = m.currentShow.Name
+		sub = fmt.Sprintf("esc back · %d episodes", len(m.episodes))
+		if m.episodesLoading {
+			sub = "Loading episodes…"
+		}
+		list = m.renderEpisodeList(tw, listH)
+	} else {
+		titleStr = "Your Shows"
+		sub = fmt.Sprintf("%d shows", len(m.shows))
+		if m.showsLoading {
+			sub = "Loading…"
+		}
+		list = m.renderShowList(tw, listH)
+	}
+	if m.podErr != nil {
+		sub = "⚠ podcasts unavailable"
+	}
+	titleLine := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render(truncate(titleStr, tw))
+	subLine := m.st.rowMuted.Render(truncate(sub, tw))
+
+	body := lipgloss.JoinVertical(lipgloss.Left, head, titleLine, subLine, "", list)
+	return box.Width(sw).Height(sh).Render(clipLines(body, th))
+}
+
+func (m Spotify) renderShowList(w, h int) string {
+	faint := func(s string) string { return lipgloss.NewStyle().Height(h).Foreground(colorFaint).Render(s) }
+	if m.showsLoading && len(m.shows) == 0 {
+		return faint("Loading your podcasts…")
+	}
+	if len(m.shows) == 0 {
+		if m.podErr != nil {
+			return faint("Couldn't load podcasts.")
+		}
+		return faint("No saved podcasts.")
+	}
+
+	start, end := trackWindow(m.showCursor, len(m.shows), h)
+	var b strings.Builder
+	for i := start; i < end; i++ {
+		s := m.shows[i]
+		text := s.Name
+		if s.Publisher != "" {
+			text += " · " + s.Publisher
+		}
+		if i == m.showCursor && m.focus == panelPodcasts {
+			b.WriteString(m.st.rowSel.Render("▶ " + truncate(text, w-2)))
+		} else {
+			b.WriteString(m.st.rowTitle.Render("  " + truncate(text, w-2)))
+		}
+		if i < end-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return lipgloss.NewStyle().Height(h).MaxHeight(h).Render(b.String())
+}
+
+func (m Spotify) renderEpisodeList(w, h int) string {
+	faint := func(s string) string { return lipgloss.NewStyle().Height(h).Foreground(colorFaint).Render(s) }
+	if m.episodesLoading && len(m.episodes) == 0 {
+		return faint("Loading episodes…")
+	}
+	if len(m.episodes) == 0 {
+		return faint("No episodes.")
+	}
+
+	start, end := trackWindow(m.episodeCursor, len(m.episodes), h)
+	durW := 6
+	textW := w - durW - 3 // 2-cell marker + 1 space before duration
+	if textW < 6 {
+		textW = 6
+	}
+	var nowID string
+	if m.state != nil && m.state.Track != nil {
+		nowID = string(m.state.Track.ID)
+	}
+
+	var b strings.Builder
+	for i := start; i < end; i++ {
+		e := m.episodes[i]
+		label := e.Title
+		if e.Date != "" {
+			label = e.Date + "  " + e.Title
+		}
+		dur := fmtDur(e.Duration)
+
+		marker := "  "
+		if !e.Playable {
+			marker = m.st.rowMuted.Render("⊘ ") // region-locked / externally hosted
+		}
+		var body, durCol string
+		switch {
+		case i == m.episodeCursor && m.focus == panelPodcasts:
+			marker = m.st.rowSel.Render("▶ ")
+			body = m.st.rowSel.Render(padRight(truncate(label, textW), textW))
+			durCol = m.st.rowSel.Render(dur)
+		case string(e.ID) != "" && string(e.ID) == nowID:
+			body = m.st.barFill.Render(padRight(truncate(label, textW), textW))
+			durCol = m.st.rowMuted.Render(dur)
+		default:
+			style := m.st.rowTitle
+			if !e.Playable {
+				style = m.st.rowMuted
+			}
+			body = style.Render(padRight(truncate(label, textW), textW))
+			durCol = m.st.rowMuted.Render(dur)
+		}
+		b.WriteString(marker + body + " " + durCol)
+		if i < end-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return lipgloss.NewStyle().Height(h).MaxHeight(h).Render(b.String())
+}
+
 func (m Spotify) renderChips() string {
-	sel := lipgloss.NewStyle().Background(colorAccent).Foreground(colorBlack).Bold(true).Padding(0, 1)
-	un := lipgloss.NewStyle().Background(colorCard).Foreground(colorText).Padding(0, 1)
-	return sel.Render("Music") + " " + un.Render("Podcasts")
+	on := lipgloss.NewStyle().Background(colorAccent).Foreground(colorBlack).Bold(true).Padding(0, 1)
+	off := lipgloss.NewStyle().Background(colorCard).Foreground(colorText).Padding(0, 1)
+	music, pod := off, off
+	if m.centerTab == "podcasts" {
+		pod = on
+	} else {
+		music = on
+	}
+	return music.Render("Music") + " " + pod.Render("Podcasts")
 }
 
 func (m Spotify) columnsHeader(tw int, leftLabel string) string {
@@ -729,10 +967,7 @@ func trackWindow(cursor, total, h int) (start, end int) {
 // centerGeom returns the center panel's outer width and track-list height,
 // matching View so mouse hit-testing agrees with the layout.
 func (m Spotify) centerGeom() (outerW, listH int) {
-	outerW = m.width - spotifySidebarWidth
-	if m.width >= 112 {
-		outerW -= spotifyRightWidth
-	}
+	outerW = m.centerOuterWidth()
 	_, _, _, th := panelDims(panelBox(false, 0, 1), outerW, m.middleHeight())
 	listH = th - 4
 	if listH < 1 {

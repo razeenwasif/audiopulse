@@ -21,8 +21,15 @@ type spotifyPanel int
 const (
 	panelLibrary spotifyPanel = iota
 	panelTracks
+	panelPodcasts
+	panelLyrics
 	panelSearch
 )
+
+// centerSplitMin is the minimum center outer width to show music and podcasts
+// side by side; below it the center is a single pane with a Music/Podcasts
+// toggle (the chips).
+const centerSplitMin = 64
 
 const spotifySidebarWidth = 32
 const spotifyRightWidth = 34
@@ -80,6 +87,19 @@ type Spotify struct {
 	tracksTotal int // expected total for the loading source (for progress)
 	loadGen     int // bumped per source switch; stale pages are dropped
 
+	// Podcasts (center-right pane / "Podcasts" tab).
+	centerTab       string // "music" | "podcasts" — active pane in single-column mode
+	shows           []spotify.Show
+	showCursor      int
+	showsLoaded     bool
+	showsLoading    bool
+	podcastView     string // "shows" | "episodes"
+	currentShow     spotify.Show
+	episodes        []spotify.Episode
+	episodeCursor   int
+	episodesLoading bool
+	podErr          error
+
 	state *spotify.PlayerState
 	queue []spotify.Track
 
@@ -105,6 +125,11 @@ type Spotify struct {
 	lyricsInstrumental bool
 	lyricsState        string      // "" | loading | ready | none | instrumental | err
 	lyricsForID        zspotify.ID // the track the lyrics are for/loading
+
+	// Floating full-lyrics modal (opened with Enter on the focused lyrics panel).
+	lyricsModal  bool
+	lyricsScroll int  // top display-line index when manually scrolled
+	lyricsFollow bool // auto-follow the current synced line until the user scrolls
 
 	search textinput.Model
 
@@ -132,16 +157,18 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 
 	w, h := artDims(cellAspect)
 	return Spotify{
-		st:       newStyles(),
-		client:   client,
-		deviceID: deviceID,
-		user:     user,
-		search:   ti,
-		artW:     w,
-		artH:     h,
-		repeat:   "off",
-		focus:    panelLibrary,
-		status:   "Loading your library…",
+		st:          newStyles(),
+		client:      client,
+		deviceID:    deviceID,
+		user:        user,
+		search:      ti,
+		artW:        w,
+		artH:        h,
+		repeat:      "off",
+		focus:       panelLibrary,
+		centerTab:   "music",
+		podcastView: "shows",
+		status:      "Loading your library…",
 	}
 }
 
@@ -185,6 +212,15 @@ type tracksPageMsg struct {
 type playerMsg struct {
 	state *spotify.PlayerState
 	queue []spotify.Track
+}
+type showsMsg struct {
+	shows []spotify.Show
+	err   error
+}
+type episodesMsg struct {
+	show     spotify.Show
+	episodes []spotify.Episode
+	err      error
 }
 type actionMsg struct{ err error }
 type searchDebounceMsg struct{ gen int }
@@ -331,6 +367,52 @@ func (m Spotify) loadTrackPageCmd(item libItem, offset, gen int) tea.Cmd {
 	}
 }
 
+func (m Spotify) loadShowsCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		shows, err := client.SavedShows(ctx)
+		return showsMsg{shows: shows, err: err}
+	}
+}
+
+func (m Spotify) loadEpisodesCmd(show spotify.Show) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		eps, err := client.ShowEpisodes(ctx, show.ID)
+		return episodesMsg{show: show, episodes: eps, err: err}
+	}
+}
+
+// playEpisodeCmd plays the selected episode and continues through the rest of
+// the show's loaded episode list (bounded, like context-less music sources).
+func (m Spotify) playEpisodeCmd() tea.Cmd {
+	if m.episodeCursor < 0 || m.episodeCursor >= len(m.episodes) {
+		return nil
+	}
+	client := m.client
+	deviceID := m.deviceID
+	pos := m.episodeCursor
+	episodes := m.episodes
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		end := pos + maxPlayURIs
+		if end > len(episodes) {
+			end = len(episodes)
+		}
+		window := episodes[pos:end]
+		uris := make([]zspotify.URI, len(window))
+		for i, e := range window {
+			uris[i] = e.URI
+		}
+		return actionMsg{err: client.PlayTracksAt(ctx, deviceID, uris, 0)}
+	}
+}
+
 // loadLyricsCmd fetches lyrics for a track from lrclib.net. It passes the
 // primary artist (lrclib's exact match dislikes "A, B" multi-artist strings).
 func (m Spotify) loadLyricsCmd(t spotify.Track) tea.Cmd {
@@ -355,6 +437,130 @@ func currentLyricLine(lines []lyrics.Line, progress time.Duration) int {
 		}
 	}
 	return cur
+}
+
+// lyricsStateText is the placeholder shown for a non-"ready" lyrics state.
+func lyricsStateText(state string) string {
+	switch state {
+	case "loading":
+		return "Loading lyrics…"
+	case "none":
+		return "No lyrics found"
+	case "instrumental":
+		return "♪  instrumental"
+	case "err":
+		return "Lyrics unavailable"
+	default:
+		return "—"
+	}
+}
+
+// lyricDisp is one rendered (word-wrapped) line of the lyrics modal.
+type lyricDisp struct {
+	text    string
+	current bool // part of the current synced line
+}
+
+// wrapText word-wraps s to width cells, hard-splitting any single word longer
+// than the width. Returns at least one (possibly empty) line.
+func wrapText(s string, width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	var lines []string
+	cur := ""
+	for _, w := range strings.Fields(s) {
+		for lipgloss.Width(w) > width {
+			if cur != "" {
+				lines = append(lines, cur)
+				cur = ""
+			}
+			r := []rune(w)
+			lines = append(lines, string(r[:width]))
+			w = string(r[width:])
+		}
+		switch {
+		case cur == "":
+			cur = w
+		case lipgloss.Width(cur)+1+lipgloss.Width(w) <= width:
+			cur += " " + w
+		default:
+			lines = append(lines, cur)
+			cur = w
+		}
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	return lines
+}
+
+// lyricsModalWidth is the outer width of the floating lyrics modal.
+func (m Spotify) lyricsModalWidth() int { return clamp(m.width*2/3, 50, 96) }
+
+// lyricsModalBodyH is how many lyric rows the modal can show at once.
+func (m Spotify) lyricsModalBodyH() int {
+	// box height = body + border(2) + padding(2) + header + sep + blank + hint(4).
+	bh := m.height - 10
+	if bh < 1 {
+		bh = 1
+	}
+	return bh
+}
+
+// lyricsModalLines builds the word-wrapped display lines for the modal at the
+// given inner width, plus the index of the current synced line's first row
+// (-1 when none / not synced / not ready).
+func (m Spotify) lyricsModalLines(innerW int) ([]lyricDisp, int) {
+	if m.lyricsState != "ready" {
+		return []lyricDisp{{text: lyricsStateText(m.lyricsState)}}, -1
+	}
+	cur := -1
+	if m.lyricsSynced && m.state != nil {
+		cur = currentLyricLine(m.lyricsLines, m.state.Progress)
+	}
+	var disp []lyricDisp
+	curDisp := -1
+	for i := range m.lyricsLines {
+		text := m.lyricsLines[i].Text
+		if strings.TrimSpace(text) == "" {
+			disp = append(disp, lyricDisp{})
+			continue
+		}
+		for _, wl := range wrapText(text, innerW) {
+			if i == cur && curDisp < 0 {
+				curDisp = len(disp)
+			}
+			disp = append(disp, lyricDisp{text: wl, current: i == cur})
+		}
+	}
+	return disp, curDisp
+}
+
+// lyricsModalStart is the effective top display-line index for the modal: it
+// auto-centers the current synced line while following, else uses the manual
+// scroll position. Always clamped to a valid range.
+func (m Spotify) lyricsModalStart() int {
+	disp, curDisp := m.lyricsModalLines(m.lyricsModalWidth() - 4)
+	bodyH := m.lyricsModalBodyH()
+	maxStart := max0(len(disp) - bodyH)
+	start := m.lyricsScroll
+	if m.lyricsFollow && m.lyricsSynced && curDisp >= 0 {
+		start = curDisp - bodyH/2
+	}
+	return clamp(start, 0, maxStart)
+}
+
+// scrollLyricsModal moves the modal viewport by delta rows and stops following.
+func (m *Spotify) scrollLyricsModal(delta int) {
+	from := m.lyricsModalStart()
+	m.lyricsFollow = false
+	disp, _ := m.lyricsModalLines(m.lyricsModalWidth() - 4)
+	maxStart := max0(len(disp) - m.lyricsModalBodyH())
+	m.lyricsScroll = clamp(from+delta, 0, maxStart)
 }
 
 // searchDebounceCmd fires after a short pause so we search once the user stops

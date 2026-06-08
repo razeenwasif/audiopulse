@@ -66,28 +66,108 @@ func (m Spotify) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 				return m, m.beginTrackLoad(m.lib[i])
 			}
 		}
+		// Click in the lyrics panel below the library → focus it (Enter expands).
+		if lyrTop := spotifyTopHeight + m.libPanelHeight(); m.lyricsPanelHeight() > 0 && msg.Y >= lyrTop {
+			m.focus = panelLyrics
+		}
 		return m, nil
 	}
 
-	// Center track row → play it.
+	// Center column: music pane (left/whole) and podcast pane (right/toggled).
 	outerW, listH := m.centerGeom()
 	if msg.X >= spotifySidebarWidth && msg.X < spotifySidebarWidth+outerW {
+		// Music/Podcasts toggle chips (single-column mode only).
+		if !m.centerSplit() && msg.Y == centerHeaderY {
+			if cmd, ok := m.clickCenterChip(msg.X); ok {
+				return m, cmd
+			}
+		}
+		row := msg.Y - trackFirstRowY
+		if m.inPodcastRegion(msg.X) {
+			if cmd := m.focusPanel(panelPodcasts); cmd != nil {
+				return m, cmd // shows are loading; ignore the row this click
+			}
+			if row >= 0 {
+				return m, m.clickPodcastRow(row, listH)
+			}
+			return m, nil
+		}
+		// Music pane.
+		m.focus = panelTracks
+		m.centerTab = "music"
 		start, end := trackWindow(m.trackCursor, len(m.tracks), listH)
-		if row := msg.Y - trackFirstRowY; row >= 0 && start+row < end {
-			m.focus = panelTracks
+		if row >= 0 && start+row < end {
 			m.trackCursor = start + row
 			return m, m.playSelectedCmd()
 		}
+		return m, nil
 	}
 	return m, nil
 }
 
+// centerHeaderY is the row of the center pane's heading (chips) line.
+const centerHeaderY = trackFirstRowY - 4
+
+// clickCenterChip toggles the Music/Podcasts tab when a chip is clicked.
+func (m *Spotify) clickCenterChip(x int) (tea.Cmd, bool) {
+	cx := spotifySidebarWidth + 2 // border + left padding
+	musicEnd := cx + 7            // " Music "
+	podStart := musicEnd + 1
+	podEnd := podStart + 10 // " Podcasts "
+	switch {
+	case x >= cx && x < musicEnd:
+		return m.focusPanel(panelTracks), true
+	case x >= podStart && x < podEnd:
+		return m.focusPanel(panelPodcasts), true
+	}
+	return nil, false
+}
+
+// clickPodcastRow opens the clicked show, or plays the clicked episode.
+func (m *Spotify) clickPodcastRow(row, listH int) tea.Cmd {
+	if m.podcastView == "episodes" {
+		start, end := trackWindow(m.episodeCursor, len(m.episodes), listH)
+		if start+row < end {
+			m.episodeCursor = start + row
+			return m.playEpisodeCmd()
+		}
+		return nil
+	}
+	start, end := trackWindow(m.showCursor, len(m.shows), listH)
+	if start+row < end {
+		m.showCursor = start + row
+		m.episodesLoading = true
+		return m.loadEpisodesCmd(m.shows[m.showCursor])
+	}
+	return nil
+}
+
 func (m Spotify) progressRowY() int { return m.height - 3 }
 
+// inPodcastRegion reports whether x falls in the center's podcast pane.
+func (m Spotify) inPodcastRegion(x int) bool {
+	cx0 := spotifySidebarWidth
+	cw := m.centerOuterWidth()
+	if x < cx0 || x >= cx0+cw {
+		return false
+	}
+	if m.centerSplit() {
+		return x >= cx0+cw/2
+	}
+	return m.centerTab == "podcasts"
+}
+
 func (m *Spotify) scrollUnder(x, delta int) {
-	if x < spotifySidebarWidth {
+	switch {
+	case x < spotifySidebarWidth:
 		m.libCursor = clamp(m.libCursor+delta, 0, len(m.lib)-1)
-	} else {
+	case m.inPodcastRegion(x):
+		if m.podcastView == "episodes" {
+			m.episodeCursor = clamp(m.episodeCursor+delta, 0, len(m.episodes)-1)
+		} else {
+			m.showCursor = clamp(m.showCursor+delta, 0, len(m.shows)-1)
+		}
+	default:
 		m.trackCursor = clamp(m.trackCursor+delta, 0, len(m.tracks)-1)
 	}
 }

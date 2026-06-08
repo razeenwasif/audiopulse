@@ -22,6 +22,7 @@ history.
 | [0007](0007-spotlight-search-overlay.md)         | Spotlight-style search overlay          | Accepted |
 | [0008](0008-synthesized-visualizer.md)           | Synthesized (non-FFT) audio visualizer  | Accepted |
 | [0009](0009-lyrics-via-lrclib.md)                | Lyrics via lrclib.net                    | Accepted |
+| [0010](0010-podcasts.md)                         | Podcasts (saved shows + episodes)       | Accepted |
 
 ## Statuses
 

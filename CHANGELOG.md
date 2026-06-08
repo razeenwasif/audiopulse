@@ -42,12 +42,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Podcasts** — the center now shows **Music** and **Podcasts** side by side when
+  the terminal is wide enough, and collapses to a single pane with a Music/Podcasts
+  toggle (the chips) when narrow. The podcast pane lists your saved shows; `enter`
+  opens a show's episodes, `enter` on an episode plays it, `esc` goes back.
+  Episodes that are region-locked or externally hosted are marked `⊘` and dimmed.
+  Powered by new `SavedShows`/`ShowEpisodes` client methods (no new OAuth scope —
+  `user-library-read` already covers it) ([ADR-0010](docs/adr/0010-podcasts.md)).
+  Note: librespot's podcast playback is best-effort — some episodes won't decode.
 - **Lyrics panel** — a panel below "Your Library" shows the current track's
   lyrics, fetched from [lrclib.net](https://lrclib.net) (free, no auth; the
   Spotify Web API has no lyrics endpoint). When time-synced (LRC) lyrics are
   available the current line is highlighted in green and follows playback;
   otherwise plain lyrics are shown. Falls back gracefully to "No lyrics found"
   or "instrumental" ([ADR-0009](docs/adr/0009-lyrics-via-lrclib.md)).
+- **Lyrics panel is Tab-focusable**, and pressing `enter` on it opens a
+  **floating full-lyrics pane** centered over the UI with the words
+  **word-wrapped** (no mid-word truncation like the narrow side panel). It
+  scrolls (`↑↓`, `g`/`G`), keeps the current synced line highlighted, auto-follows
+  playback (toggle with `f`), and closes with `esc`. `shift+tab` cycles panels
+  backwards.
 - **CAVA-style visualizer** — a green spectrum panel sits below Now Playing on the
   right, animating while a track plays and flattening when paused. AudioPulse never
   sees librespot's decoded PCM, so the spectrum is a synthesized animation driven by

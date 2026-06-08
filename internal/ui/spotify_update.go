@@ -112,6 +112,31 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case showsMsg:
+		m.showsLoading = false
+		if msg.err != nil {
+			m.podErr = msg.err
+			return m, nil
+		}
+		m.podErr = nil
+		m.shows = msg.shows
+		m.showsLoaded = true
+		m.showCursor = clamp(m.showCursor, 0, max0(len(m.shows)-1))
+		return m, nil
+
+	case episodesMsg:
+		m.episodesLoading = false
+		if msg.err != nil {
+			m.podErr = msg.err
+			return m, nil
+		}
+		m.podErr = nil
+		m.currentShow = msg.show
+		m.episodes = msg.episodes
+		m.episodeCursor = 0
+		m.podcastView = "episodes"
+		return m, nil
+
 	case vizTickMsg:
 		m.vizFrame++
 		if m.vizActive() {
@@ -207,6 +232,31 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Floating full-lyrics modal: keys scroll it or close it.
+	if m.lyricsModal {
+		switch msg.String() {
+		case "esc", "enter", "q":
+			m.lyricsModal = false
+		case "ctrl+c":
+			return m, tea.Quit
+		case "up", "k":
+			m.scrollLyricsModal(-1)
+		case "down", "j":
+			m.scrollLyricsModal(1)
+		case "pgup":
+			m.scrollLyricsModal(-max0(m.lyricsModalBodyH() - 1))
+		case "pgdown", " ":
+			m.scrollLyricsModal(max0(m.lyricsModalBodyH() - 1))
+		case "g", "home":
+			m.scrollLyricsModal(-(1 << 30))
+		case "G", "end":
+			m.scrollLyricsModal(1 << 30)
+		case "f":
+			m.lyricsFollow = !m.lyricsFollow // toggle synced auto-follow
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
@@ -216,12 +266,10 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.search.Focus()
 
 	case "tab":
-		if m.focus == panelLibrary {
-			m.focus = panelTracks
-		} else {
-			m.focus = panelLibrary
-		}
-		return m, nil
+		return m, m.focusPanel(m.nextPanel(m.focus))
+
+	case "shift+tab":
+		return m, m.focusPanel(m.prevPanel(m.focus))
 
 	case "up", "k":
 		m.moveCursor(-1)
@@ -237,14 +285,36 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
-		if m.focus == panelLibrary {
+		switch m.focus {
+		case panelLibrary:
 			if len(m.lib) == 0 {
 				return m, nil
 			}
 			m.focus = panelTracks
+			m.centerTab = "music"
 			return m, m.beginTrackLoad(m.lib[m.libCursor])
+		case panelLyrics:
+			m.openLyricsModal()
+			return m, nil
+		case panelPodcasts:
+			if m.podcastView == "shows" {
+				if m.showCursor < 0 || m.showCursor >= len(m.shows) {
+					return m, nil
+				}
+				m.episodesLoading = true
+				return m, m.loadEpisodesCmd(m.shows[m.showCursor])
+			}
+			return m, m.playEpisodeCmd()
+		default:
+			return m, m.playSelectedCmd()
 		}
-		return m, m.playSelectedCmd()
+
+	case "esc", "backspace":
+		// Back out of a show's episode list to the show list.
+		if m.focus == panelPodcasts && m.podcastView == "episodes" {
+			m.podcastView = "shows"
+		}
+		return m, nil
 
 	case " ", "p":
 		return m, m.togglePlay()
@@ -328,19 +398,88 @@ func (m Spotify) changeVolume(delta int) tea.Cmd {
 // --- cursor helpers ----------------------------------------------------------
 
 func (m *Spotify) moveCursor(delta int) {
-	if m.focus == panelLibrary {
+	switch m.focus {
+	case panelLibrary:
 		m.libCursor = clamp(m.libCursor+delta, 0, len(m.lib)-1)
-	} else {
+	case panelTracks:
 		m.trackCursor = clamp(m.trackCursor+delta, 0, len(m.tracks)-1)
+	case panelPodcasts:
+		if m.podcastView == "episodes" {
+			m.episodeCursor = clamp(m.episodeCursor+delta, 0, len(m.episodes)-1)
+		} else {
+			m.showCursor = clamp(m.showCursor+delta, 0, len(m.shows)-1)
+		}
 	}
 }
 
 func (m *Spotify) setCursor(pos int) {
-	if m.focus == panelLibrary {
+	switch m.focus {
+	case panelLibrary:
 		m.libCursor = clamp(pos, 0, len(m.lib)-1)
-	} else {
+	case panelTracks:
 		m.trackCursor = clamp(pos, 0, len(m.tracks)-1)
+	case panelPodcasts:
+		if m.podcastView == "episodes" {
+			m.episodeCursor = clamp(pos, 0, len(m.episodes)-1)
+		} else {
+			m.showCursor = clamp(pos, 0, len(m.shows)-1)
+		}
 	}
+}
+
+// panelCycle is the Tab focus order. Podcasts is always reachable (the center
+// pane is always present); lyrics only when its panel is on screen.
+func (m Spotify) panelCycle() []spotifyPanel {
+	order := []spotifyPanel{panelLibrary, panelTracks, panelPodcasts}
+	if m.lyricsPanelHeight() > 0 {
+		order = append(order, panelLyrics)
+	}
+	return order
+}
+
+// focusPanel moves focus to p, syncs which center tab is active, and lazily
+// loads saved shows the first time the podcasts pane is focused.
+func (m *Spotify) focusPanel(p spotifyPanel) tea.Cmd {
+	m.focus = p
+	switch p {
+	case panelTracks:
+		m.centerTab = "music"
+	case panelPodcasts:
+		m.centerTab = "podcasts"
+		if !m.showsLoaded && !m.showsLoading {
+			m.showsLoading = true
+			return m.loadShowsCmd()
+		}
+	}
+	return nil
+}
+
+func (m Spotify) nextPanel(cur spotifyPanel) spotifyPanel {
+	order := m.panelCycle()
+	for i, p := range order {
+		if p == cur {
+			return order[(i+1)%len(order)]
+		}
+	}
+	return panelLibrary
+}
+
+func (m Spotify) prevPanel(cur spotifyPanel) spotifyPanel {
+	order := m.panelCycle()
+	for i, p := range order {
+		if p == cur {
+			return order[(i-1+len(order))%len(order)]
+		}
+	}
+	return panelLibrary
+}
+
+// openLyricsModal opens the floating lyrics pane, centering on the current
+// synced line (follow mode on).
+func (m *Spotify) openLyricsModal() {
+	m.lyricsModal = true
+	m.lyricsFollow = true
+	m.lyricsScroll = m.lyricsModalStart()
 }
 
 func clamp(v, lo, hi int) int {

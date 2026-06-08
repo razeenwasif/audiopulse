@@ -132,6 +132,116 @@ func TestLyricsPanelEmptyState(t *testing.T) {
 	}
 }
 
+func TestLyricsTabFocusAndModal(t *testing.T) {
+	m := sampleSpotify() // focus starts on tracks; 130×34 → lyrics panel visible
+	m.lyricsState = "ready"
+	m.lyricsLines = []lyrics.Line{
+		{At: -1, Text: "a very long lyric line that the narrow side panel would truncate but the modal must show in full without cutting"},
+	}
+
+	// Cycle Tab from tracks → podcasts → lyrics.
+	var mm tea.Model = m
+	mm, _ = mm.Update(tea.KeyMsg{Type: tea.KeyTab}) // → podcasts
+	mm, _ = mm.Update(tea.KeyMsg{Type: tea.KeyTab}) // → lyrics
+	if sp := mm.(Spotify); sp.focus != panelLyrics {
+		t.Fatalf("two Tabs from tracks → focus %d, want panelLyrics (%d)", sp.focus, panelLyrics)
+	}
+
+	// Enter opens the floating modal showing the full, wrapped lyric.
+	mm, _ = mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	sp := mm.(Spotify)
+	if !sp.lyricsModal {
+		t.Fatal("Enter on the lyrics panel should open the modal")
+	}
+	if !strings.Contains(sp.View(), "without cutting") {
+		t.Errorf("modal should show the full wrapped lyric (tail word missing)\n%s", sp.View())
+	}
+
+	// Esc closes it.
+	mm, _ = mm.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if mm.(Spotify).lyricsModal {
+		t.Error("Esc should close the lyrics modal")
+	}
+}
+
+func TestPodcastsSplitAndEpisodes(t *testing.T) {
+	m := sampleSpotify() // 130 wide → center splits music | podcasts
+	if !m.centerSplit() {
+		t.Fatal("expected a side-by-side center split at width 130")
+	}
+	m.shows = []spotify.Show{
+		{Name: "The Daily", Publisher: "NYT"},
+		{Name: "Reply All", Publisher: "Gimlet"},
+	}
+	m.showsLoaded = true
+
+	// Split shows both panes at once.
+	view := m.View()
+	for _, want := range []string{"Music", "Podcasts", "The Daily", "Midnight City"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("split center missing %q", want)
+		}
+	}
+
+	// Tab cycles library → tracks(=start) → podcasts.
+	var mm tea.Model = m
+	mm, _ = mm.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if sp := mm.(Spotify); sp.focus != panelPodcasts || sp.centerTab != "podcasts" {
+		t.Fatalf("Tab from tracks → focus %d tab %q, want podcasts", mm.(Spotify).focus, mm.(Spotify).centerTab)
+	}
+
+	// Episodes view: unplayable episodes are marked and de-emphasized.
+	sp := mm.(Spotify)
+	sp.podcastView = "episodes"
+	sp.currentShow = spotify.Show{Name: "The Daily"}
+	sp.episodes = []spotify.Episode{
+		{Title: "Latest Episode", Playable: true, Date: "2026-06-08"},
+		{Title: "Region Locked", Playable: false},
+	}
+	ev := sp.View()
+	for _, want := range []string{"The Daily", "Latest", "⊘"} {
+		if !strings.Contains(ev, want) {
+			t.Errorf("episode view missing %q", want)
+		}
+	}
+}
+
+func TestCenterToggleWhenNarrow(t *testing.T) {
+	m := sampleSpotify()
+	m.width, m.height = 95, 30 // center ~63 cols → single pane + chip toggle
+	if m.centerSplit() {
+		t.Fatal("expected a single center pane at width 95")
+	}
+	m.shows = []spotify.Show{{Name: "The Daily"}}
+	m.showsLoaded = true
+
+	// Music tab: the track list shows; podcasts hidden.
+	if !strings.Contains(m.View(), "Redbone") {
+		t.Error("music tab should show the track list")
+	}
+
+	// Switch to podcasts tab: shows appear, music list is gone.
+	m.centerTab = "podcasts"
+	m.focus = panelPodcasts
+	v := m.View()
+	if !strings.Contains(v, "The Daily") {
+		t.Error("podcast tab should show the show list")
+	}
+	if strings.Contains(v, "Redbone") {
+		t.Error("music list should be hidden on the podcast tab")
+	}
+}
+
+func TestWrapText(t *testing.T) {
+	if got := wrapText("alpha beta gamma", 11); len(got) != 2 || got[0] != "alpha beta" || got[1] != "gamma" {
+		t.Errorf("wrapText word-wrap = %q, want [alpha beta gamma]", got)
+	}
+	// A single word longer than the width is hard-split.
+	if got := wrapText("supercalifragilistic", 5); len(got) != 4 || got[0] != "super" {
+		t.Errorf("wrapText hard-split = %q", got)
+	}
+}
+
 func TestSearchFocusToggle(t *testing.T) {
 	var m tea.Model = sampleSpotify()
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})

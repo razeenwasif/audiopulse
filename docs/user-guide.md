@@ -11,15 +11,15 @@ A complete tour of AudioPulse's interface and controls.
 
 ```
  ⌂  ♫ AudioPulse            🔎  What do you want to play?            Razeen ▾   ← top bar
-╭ Your Library ─────╮╭ Music  Podcasts ───────────╮╭ Now Playing ──────────╮
-│  ██  Liked Songs  ││ Chill Vibes                ││   ▀▀ album art ▀▀      │
-│  ██  Playlist     ││ 1 Midnight City — M83 4:04 ││ Instant Crush         │
-│ ▌██  Chill Vibes  ││ ♪ Instant Crush — …   5:37 ││ Daft Punk             │
-╰───────────────────╯│                            │╰── Up Next ────────────╯
-╭ Lyrics ───────────╮│                            │╭ Visualizer ───────────╮
-│ The city's a mess ││                            ││ ▃ ▅ ▂ ▆ █ ▄ ▇ ▃ ▅ ▁ ▆ │
-│ but you're my home││                            ││ █ ▄ ▂ ▇ ▅ ▃ ▆ ▄ ▁ ▅ █ │
-╰───────────────────╯╰────────────────────────────╯╰───────────────────────╯
+╭ Your Library ─────╮╭ Music ────────╮╭ Podcasts ─────╮╭ Now Playing ──────────╮
+│  ██  Liked Songs  ││ Chill Vibes   ││ Your Shows    ││   ▀▀ album art ▀▀      │
+│  ██  Playlist     ││ 1 Midnight…   ││ ▶ The Daily   ││ Instant Crush         │
+│ ▌██  Chill Vibes  ││ ♪ Instant…    ││   Reply All   ││ Daft Punk             │
+╰───────────────────╯│               ││               │╰── Up Next ────────────╯
+╭ Lyrics ───────────╮│               ││               │╭ Visualizer ───────────╮
+│ The city's a mess ││               ││               ││ ▃ ▅ ▂ ▆ █ ▄ ▇ ▃ ▅ ▁ ▆ │
+│ but you're my home││               ││               ││ █ ▄ ▂ ▇ ▅ ▃ ▆ ▄ ▁ ▅ █ │
+╰───────────────────╯╰───────────────╯╰───────────────╯╰───────────────────────╯
 ╭ Instant Crush — Daft Punk    ⇄  |<  ||  >|  ↻                  vol 65% ────╮
 │ 1:12 ━━━━━━━━●──────────────────────────────────────────────────────  5:37 │
 ╰────────────────────────────────────────────────────────────────────────────╯
@@ -34,9 +34,18 @@ A complete tour of AudioPulse's interface and controls.
   [lrclib.net](https://lrclib.net) (the Spotify API has no lyrics endpoint). When
   time-synced lyrics exist the current line is highlighted in green and scrolls
   with playback; otherwise plain lyrics are shown. Shows "No lyrics found" or
-  "instrumental" when appropriate.
-- **Feed** (center) — filter chips, the selected source's title, and a numbered
-  track table. The playing track is marked `♪`; the selected row is green.
+  "instrumental" when appropriate. Press `tab` to focus it, then `enter` to open
+  a **floating full-lyrics pane** where the words wrap instead of being cut off
+  (scroll with `↑↓`/`g`/`G`, `f` toggles synced auto-follow, `esc` closes).
+- **Center** — **Music** and **Podcasts** side by side when the terminal is wide
+  enough; on narrower terminals it becomes a single pane with a **Music/Podcasts**
+  toggle (the chips — click one or `tab` to it).
+  - **Music** — the selected library source's tracks. The playing track is marked
+    `♪`; the selected row is green.
+  - **Podcasts** — your saved shows. `enter` opens a show's episodes, `enter` on
+    an episode plays it, `esc` goes back to the show list. Episodes that are
+    region-locked or hosted off Spotify are marked `⊘` and dimmed (and may not
+    play — see below).
 - **Now Playing** (top right) — album art, track/artist/album, and the up-next
   queue, in a light-green-bordered panel.
 - **Visualizer** (bottom right) — a CAVA-style green spectrum that animates while
@@ -48,19 +57,27 @@ A complete tour of AudioPulse's interface and controls.
   (shuffle · prev · play/pause · next · repeat) with a green play button, and a
   full-width progress bar with volume.
 
-**Controls:** `tab` switches the focused panel; `↑↓`/`j`/`k` move; `enter` opens
-a library entry or plays the selected track; `space` play/pause; `n`/`b`
-next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R` loop-all/loop-one
-(repeat); `/` opens search; `q` quit. The shuffle and repeat glyphs turn
+**Controls:** `tab`/`shift+tab` cycle the focused panel (Library → Music → Podcasts → Lyrics);
+`↑↓`/`j`/`k` move; `enter` opens a library entry, plays the selected track, opens
+a show's episodes / plays an episode (Podcasts), or — on the Lyrics panel — opens
+the full-lyrics pane; `esc` backs out of a show's episodes; `space` play/pause;
+`n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R`
+loop-all/loop-one (repeat); `/` opens search; `q` quit. The shuffle and repeat glyphs turn
 **green** when active. (*Smart shuffle* has no Web API endpoint and can't be
 toggled here; pressing `S` says so.) **Mouse:** wheel scrolls the panel under the
-pointer; click a library entry to open it; click a track to play it; click or
-drag the progress bar to seek; click the play/pause area to toggle.
+pointer; click a library entry to open it; click a track to play it; click the
+lyrics panel to focus it; click or drag the progress bar to seek; click the
+play/pause area to toggle.
 
 **Spotlight search:** press `/` for a floating, macOS-Spotlight-style search box
 that overlays the UI. Type and results update live; `↑`/`↓` select a result,
 `enter` plays it (and loads the results into the center panel), and `esc` closes
 the overlay.
+
+> **Podcast playback is best-effort.** AudioPulse can list and queue episodes, but
+> actual audio is decoded by librespot, whose podcast support is limited — some
+> episodes (region-locked, or hosted off Spotify's CDN, marked `⊘`) won't play. If
+> an episode doesn't start, that's the cause, not a bug in the queueing.
 
 ## Contents (Deezer guest mode)
 
