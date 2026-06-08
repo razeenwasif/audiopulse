@@ -15,7 +15,10 @@ A complete tour of AudioPulse's interface and controls.
 │  ██  Liked Songs  ││ Chill Vibes                ││   ▀▀ album art ▀▀      │
 │  ██  Playlist     ││ 1 Midnight City — M83 4:04 ││ Instant Crush         │
 │ ▌██  Chill Vibes  ││ ♪ Instant Crush — …   5:37 ││ Daft Punk             │
-╰───────────────────╯╰────────────────────────────╯╰── Up Next ────────────╯
+│                   ││                            │╰── Up Next ────────────╯
+│                   ││                            │╭ Visualizer ───────────╮
+│                   ││                            ││ ▃▅▂▆█▄▇▃▅▁▆▄▂▇▅▃▆▄▁▅█ │
+╰───────────────────╯╰────────────────────────────╯╰───────────────────────╯
 ╭ Instant Crush — Daft Punk    ⇄  |<  ||  >|  ↻                  vol 65% ────╮
 │ 1:12 ━━━━━━━━●──────────────────────────────────────────────────────  5:37 │
 ╰────────────────────────────────────────────────────────────────────────────╯
@@ -28,7 +31,13 @@ A complete tour of AudioPulse's interface and controls.
   green border.
 - **Feed** (center) — filter chips, the selected source's title, and a numbered
   track table. The playing track is marked `♪`; the selected row is green.
-- **Now Playing** (right) — album art, track/artist/album, and the up-next queue.
+- **Now Playing** (top right) — album art, track/artist/album, and the up-next
+  queue, in a light-green-bordered panel.
+- **Visualizer** (bottom right) — a CAVA-style green spectrum that animates while
+  a track plays and settles to a flat line when paused, also light-green-bordered.
+  It's a synthesized animation: AudioPulse controls librespot but never sees the
+  decoded audio, so the bars are driven by the play/pause state rather than a true
+  FFT of the sound.
 - **Player bar** (bottom) — the current track, centered transport controls
   (shuffle · prev · play/pause · next · repeat) with a green play button, and a
   full-width progress bar with volume.

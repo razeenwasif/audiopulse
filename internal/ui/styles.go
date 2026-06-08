@@ -11,6 +11,8 @@ import (
 var (
 	colorAccent   = lipgloss.Color("#1DB954") // Spotify green
 	colorAccentHi = lipgloss.Color("#1ED760") // brighter green for highlights
+	colorAccentLt = lipgloss.Color("#7EE787") // light/pale green (now-playing + visualizer borders)
+	colorVizTop   = lipgloss.Color("#B6F2C4") // palest green, visualizer bar caps
 	colorText     = lipgloss.Color("#FFFFFF")
 	colorMuted    = lipgloss.Color("#B3B3B3")
 	colorFaint    = lipgloss.Color("#535353")
@@ -37,6 +39,15 @@ func panelBox(focused bool, padV, padH int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(c).
+		Padding(padV, padH)
+}
+
+// lightPanelBox is a rounded panel with a light-green border, used for the
+// now-playing and visualizer panels on the right.
+func lightPanelBox(padV, padH int) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorAccentLt).
 		Padding(padV, padH)
 }
 

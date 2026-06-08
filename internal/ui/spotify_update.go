@@ -30,22 +30,33 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lib = msg.items
 		m.status = ""
 		if len(m.lib) > 0 {
-			m.loading = true
-			return m, m.loadTracksCmd(m.lib[m.libCursor])
+			return m, m.beginTrackLoad(m.lib[m.libCursor])
 		}
 		return m, nil
 
-	case tracksMsg:
-		m.loading = false
+	case tracksPageMsg:
+		if msg.gen != m.loadGen {
+			return m, nil // a newer source switch supersedes this page
+		}
 		if msg.err != nil {
+			m.loading = false
 			m.err = msg.err
 			m.status = "Could not load tracks."
 			return m, nil
 		}
 		m.err = nil
-		m.tracks = msg.tracks
 		m.source = msg.source
-		m.trackCursor = 0
+		if msg.page.Offset == 0 {
+			m.tracks = msg.page.Tracks
+		} else {
+			m.tracks = append(m.tracks, msg.page.Tracks...)
+		}
+		m.tracksTotal = msg.page.Total
+		if msg.page.HasMore() && len(m.tracks) < maxTrackItems {
+			return m, m.loadTrackPageCmd(msg.item, msg.page.NextOffset(), msg.gen)
+		}
+		m.loading = false
+		m.tracksTotal = len(m.tracks)
 		return m, nil
 
 	case playerMsg:
@@ -53,15 +64,29 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = msg.state
 		}
 		m.queue = msg.queue
+		var cmds []tea.Cmd
 		// Load album art when the track's cover changes (only if the right
 		// panel is visible).
 		if m.width >= 112 && m.state != nil && m.state.Track != nil {
 			url := m.state.Track.ImageURL
 			if url != "" && url != m.artURL {
 				m.artURL = url
-				return m, m.loadArtCmd(url)
+				cmds = append(cmds, m.loadArtCmd(url))
 			}
 		}
+		// (Re)start the visualizer animation loop once playback is active.
+		if m.vizActive() && !m.vizTicking {
+			m.vizTicking = true
+			cmds = append(cmds, m.vizTickCmd())
+		}
+		return m, tea.Batch(cmds...)
+
+	case vizTickMsg:
+		m.vizFrame++
+		if m.vizActive() {
+			return m, m.vizTickCmd()
+		}
+		m.vizTicking = false // pause/hidden: let the loop end, restart on resume
 		return m, nil
 
 	case artMsg:
@@ -185,9 +210,8 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.lib) == 0 {
 				return m, nil
 			}
-			m.loading = true
 			m.focus = panelTracks
-			return m, m.loadTracksCmd(m.lib[m.libCursor])
+			return m, m.beginTrackLoad(m.lib[m.libCursor])
 		}
 		return m, m.playSelectedCmd()
 

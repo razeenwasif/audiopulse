@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shown as `vol N%`.
 
 ### Fixed
+- Playlists and Liked Songs now list **all** their tracks. The Web API client
+  followed only the first response page, so any playlist or the saved-tracks
+  collection was capped at one page (≤100 / 50 items). Tracks now **stream in the
+  background**: the first page renders immediately and the center panel shows
+  `Loading… N/Total` while the remaining pages fill in (`LikedSongsPage` /
+  `PlaylistTracksPage` in `internal/spotify/client.go`, streamed by
+  `beginTrackLoad`/`loadTrackPageCmd` in `internal/ui`), bounded by a safety cap.
+  Switching sources mid-stream cancels the stale stream (a load generation token).
+  The sidebar playlist list is likewise fully paginated. Playback for
+  context-less sources (Liked Songs / Recent / Search) sends a bounded window of
+  track URIs starting at the selection, since Spotify's play endpoint rejects
+  very large URI arrays.
 - Shuffle/repeat glyphs now reflect the keypress immediately and stay lit. They
   start off and are tracked purely as local intent, instead of being read from
   the Web API, which doesn't reliably report these for a librespot device — that
@@ -28,6 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **CAVA-style visualizer** — a green spectrum panel sits below Now Playing on the
+  right, animating while a track plays and flattening when paused. AudioPulse never
+  sees librespot's decoded PCM, so the spectrum is a synthesized animation driven by
+  playback state rather than a true FFT (a real one would need to tap the PulseAudio
+  monitor source). It animates on a ~8 fps tick that runs only while playing and the
+  right column is visible ([ADR-0008](docs/adr/0008-synthesized-visualizer.md)).
+- **Light-green panel borders** on the Now Playing and Visualizer panels, setting
+  the right column apart from the green-on-focus library/center panels.
 - **Spotlight search** — `/` opens a floating, macOS-Spotlight-style search box
   that overlays the UI (composited with `x/ansi`), with live debounced results;
   `↑`/`↓` select, `enter` plays (and loads results into the center), `esc` closes

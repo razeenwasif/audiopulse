@@ -61,8 +61,7 @@ func (m Spotify) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if i >= 0 && i < len(m.lib) {
 				m.focus = panelTracks
 				m.libCursor = i
-				m.loading = true
-				return m, m.loadTracksCmd(m.lib[i])
+				return m, m.beginTrackLoad(m.lib[i])
 			}
 		}
 		return m, nil

@@ -20,6 +20,7 @@ history.
 | [0005](0005-spotify-via-librespot.md)            | Spotify full-song playback via librespot| Accepted |
 | [0006](0006-spotify-desktop-ui.md)               | Spotify-desktop visual design           | Accepted |
 | [0007](0007-spotlight-search-overlay.md)         | Spotlight-style search overlay          | Accepted |
+| [0008](0008-synthesized-visualizer.md)           | Synthesized (non-FFT) audio visualizer  | Accepted |
 
 ## Statuses
 

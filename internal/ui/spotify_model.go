@@ -25,6 +25,16 @@ const (
 const spotifySidebarWidth = 32
 const spotifyRightWidth = 34
 
+// maxPlayURIs bounds the explicit URI list sent to Spotify's play endpoint for
+// context-less sources (Liked Songs / Recent / Search). The endpoint rejects
+// very large arrays, so playback starts a window of this many tracks from the
+// selection.
+const maxPlayURIs = 500
+
+// maxTrackItems caps how many tracks the background page-streamer will collect
+// for one source, a safety bound against pathologically large playlists.
+const maxTrackItems = 10000
+
 // libKind distinguishes special library entries from user playlists.
 type libKind int
 
@@ -65,6 +75,8 @@ type Spotify struct {
 	trackCursor int
 	source      trackSource
 	loading     bool
+	tracksTotal int // expected total for the loading source (for progress)
+	loadGen     int // bumped per source switch; stale pages are dropped
 
 	state *spotify.PlayerState
 	queue []spotify.Track
@@ -78,6 +90,12 @@ type Spotify struct {
 	art        string // rendered album art for the current track
 	artURL     string // image URL the art was rendered from
 	artW, artH int    // art size in cells (height derived from cell aspect)
+
+	// Visualizer (CAVA-style). AudioPulse can't see librespot's PCM, so the
+	// spectrum is a procedural animation driven by playback: vizFrame advances on
+	// a fast tick while a track plays, and decays to a flat baseline when paused.
+	vizFrame   int
+	vizTicking bool // a vizTick loop is currently scheduled (avoids duplicates)
 
 	search textinput.Model
 
@@ -145,9 +163,14 @@ type libraryMsg struct {
 	items []libItem
 	err   error
 }
-type tracksMsg struct {
+
+// tracksPageMsg delivers one streamed page of the center track list. Pages for
+// a source arrive in order; gen guards against a source switch mid-stream.
+type tracksPageMsg struct {
+	gen    int
 	source trackSource
-	tracks []spotify.Track
+	item   libItem // carried so the next page can be requested
+	page   spotify.TrackPage
 	err    error
 }
 type playerMsg struct {
@@ -168,12 +191,62 @@ type artMsg struct {
 	err error
 }
 type spotifyTickMsg time.Time
+type vizTickMsg time.Time
 
 // --- commands ---------------------------------------------------------------
 
 func (m Spotify) tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return spotifyTickMsg(t) })
 }
+
+// vizFrameRate is the visualizer animation cadence (~8 fps). It only runs while
+// a track is playing and the right panel is visible, so the cost is bounded.
+const vizFrameRate = 120 * time.Millisecond
+
+func (m Spotify) vizTickCmd() tea.Cmd {
+	return tea.Tick(vizFrameRate, func(t time.Time) tea.Msg { return vizTickMsg(t) })
+}
+
+// isPlaying reports whether a track is actively playing.
+func (m Spotify) isPlaying() bool { return m.state != nil && m.state.Playing }
+
+// vizLevels produces n spectrum bar heights in [0,1]. While playing it layers a
+// few sine waves (advanced by vizFrame) under a bass-weighted envelope for an
+// organic, CAVA-like spectrum; when paused it returns a flat low baseline. This
+// is a synthesized animation — AudioPulse has no access to the decoded audio.
+func (m Spotify) vizLevels(n int) []float64 {
+	levels := make([]float64, n)
+	if !m.isPlaying() {
+		for i := range levels {
+			levels[i] = 0.04 // flat resting line
+		}
+		return levels
+	}
+	denom := float64(n - 1)
+	if denom < 1 {
+		denom = 1
+	}
+	t := float64(m.vizFrame) * 0.35
+	for i := 0; i < n; i++ {
+		x := float64(i)
+		v := 0.5 + 0.5*math.Sin(t+x*0.45)
+		v *= 0.55 + 0.45*math.Sin(t*0.6+x*0.9+1.3)
+		v += 0.15 * math.Sin(t*1.7+x*0.2)
+		// Bass-weighted envelope: fuller toward the left, tapering right.
+		v *= 0.55 + 0.45*math.Cos(math.Pi*x/denom)
+		switch {
+		case v < 0.05:
+			v = 0.05 // small floor so bars never fully vanish while playing
+		case v > 1:
+			v = 1
+		}
+		levels[i] = v
+	}
+	return levels
+}
+
+// vizActive reports whether the visualizer should be animating right now.
+func (m Spotify) vizActive() bool { return m.isPlaying() && m.width >= 112 }
 
 func (m Spotify) loadLibraryCmd() tea.Cmd {
 	client := m.client
@@ -201,28 +274,46 @@ func (m Spotify) loadLibraryCmd() tea.Cmd {
 	}
 }
 
-func (m Spotify) loadTracksCmd(item libItem) tea.Cmd {
+// beginTrackLoad clears the center list and kicks off streaming the first page
+// of a library item. Each source switch bumps loadGen so pages still in flight
+// for the previous source are ignored when they arrive.
+func (m *Spotify) beginTrackLoad(item libItem) tea.Cmd {
+	m.loadGen++
+	m.tracks = nil
+	m.trackCursor = 0
+	m.tracksTotal = 0
+	m.loading = true
+	return m.loadTrackPageCmd(item, 0, m.loadGen)
+}
+
+// loadTrackPageCmd fetches a single page of a source's tracks at the given
+// offset. The update loop appends it and requests the next page until the
+// source is fully loaded.
+func (m Spotify) loadTrackPageCmd(item libItem, offset, gen int) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		var (
-			tracks []spotify.Track
-			err    error
-			src    trackSource
+			page spotify.TrackPage
+			err  error
+			src  trackSource
 		)
 		switch item.kind {
 		case libLiked:
-			tracks, err = client.LikedSongs(ctx)
 			src = trackSource{title: "Liked Songs"}
+			page, err = client.LikedSongsPage(ctx, offset)
 		case libRecent:
-			tracks, err = client.RecentlyPlayed(ctx)
+			// Recently Played isn't offset-paginated; fetch the single page.
 			src = trackSource{title: "Recently Played"}
+			var tracks []spotify.Track
+			tracks, err = client.RecentlyPlayed(ctx)
+			page = spotify.TrackPage{Tracks: tracks, Total: len(tracks)}
 		default:
-			tracks, err = client.PlaylistTracks(ctx, item.plID)
 			src = trackSource{title: item.name, contextURI: item.plURI}
+			page, err = client.PlaylistTracksPage(ctx, item.plID, offset)
 		}
-		return tracksMsg{source: src, tracks: tracks, err: err}
+		return tracksPageMsg{gen: gen, source: src, item: item, page: page, err: err}
 	}
 }
 
@@ -282,11 +373,20 @@ func (m Spotify) playSelectedCmd() tea.Cmd {
 		if src.contextURI != "" {
 			err = client.PlayContext(ctx, deviceID, src.contextURI, tracks[pos].URI)
 		} else {
-			uris := make([]zspotify.URI, len(tracks))
-			for i, t := range tracks {
+			// No context URI (Liked Songs / Recent / Search): send an explicit
+			// URI list. Spotify's play endpoint rejects very large arrays, so
+			// send a bounded window starting at the selection and continuing
+			// through the list; the selected track becomes offset 0.
+			end := pos + maxPlayURIs
+			if end > len(tracks) {
+				end = len(tracks)
+			}
+			window := tracks[pos:end]
+			uris := make([]zspotify.URI, len(window))
+			for i, t := range window {
 				uris[i] = t.URI
 			}
-			err = client.PlayTracksAt(ctx, deviceID, uris, pos)
+			err = client.PlayTracksAt(ctx, deviceID, uris, 0)
 		}
 		return actionMsg{err: err}
 	}

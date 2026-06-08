@@ -69,6 +69,38 @@ func TestHalfBlocks(t *testing.T) {
 	}
 }
 
+func TestVisualizerPanel(t *testing.T) {
+	m := sampleSpotify() // playing, 130×34 → right column visible
+
+	if !strings.Contains(m.View(), "Visualizer") {
+		t.Fatalf("expected Visualizer panel in view:\n%s", m.View())
+	}
+
+	// While playing, the animation tick advances vizFrame and reschedules itself.
+	updated, cmd := m.Update(vizTickMsg(time.Now()))
+	m = updated.(Spotify)
+	if m.vizFrame == 0 {
+		t.Error("vizFrame should advance on a viz tick while playing")
+	}
+	if cmd == nil {
+		t.Error("viz tick should reschedule itself while playing")
+	}
+	if bars := m.renderBars(20, 6); !strings.ContainsAny(bars, "▁▂▃▄▅▆▇█") {
+		t.Errorf("expected bar glyphs while playing, got %q", bars)
+	}
+
+	// Paused: the tick loop ends and bars collapse to a flat resting line.
+	m.state.Playing = false
+	_, cmd = m.Update(vizTickMsg(time.Now()))
+	if cmd != nil {
+		t.Error("viz tick should not reschedule while paused")
+	}
+	bars := m.renderBars(20, 6)
+	if strings.ContainsAny(bars, "▆▇█") {
+		t.Errorf("expected a flat baseline while paused, got tall bars: %q", bars)
+	}
+}
+
 func TestSearchFocusToggle(t *testing.T) {
 	var m tea.Model = sampleSpotify()
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})

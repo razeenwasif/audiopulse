@@ -7,6 +7,7 @@ package spotify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,6 +15,11 @@ import (
 
 	zspotify "github.com/zmb3/spotify/v2"
 )
+
+// maxLibraryItems caps how many items a paginated library fetch will collect, a
+// safety bound against pathologically large libraries (the Spotify API pages in
+// 50–100s, so this is many round-trips before it ever trips).
+const maxLibraryItems = 10000
 
 // Track is a single playable track.
 type Track struct {
@@ -78,29 +84,79 @@ func (c *Client) Me(ctx context.Context) (string, error) {
 
 // --- library -----------------------------------------------------------------
 
-// Playlists returns the user's playlists.
+// Playlists returns the user's playlists, following pagination so libraries
+// larger than one API page are returned in full.
 func (c *Client) Playlists(ctx context.Context) ([]Playlist, error) {
 	page, err := c.api.CurrentUsersPlaylists(ctx, zspotify.Limit(50))
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Playlist, 0, len(page.Playlists))
-	for _, p := range page.Playlists {
-		out = append(out, Playlist{
-			ID:    p.ID,
-			URI:   p.URI,
-			Name:  p.Name,
-			Count: int(p.Tracks.Total),
-		})
+	var out []Playlist
+	for {
+		for _, p := range page.Playlists {
+			out = append(out, Playlist{
+				ID:    p.ID,
+				URI:   p.URI,
+				Name:  p.Name,
+				Count: int(p.Tracks.Total),
+			})
+		}
+		if len(out) >= maxLibraryItems {
+			break
+		}
+		if err := c.api.NextPage(ctx, page); err != nil {
+			if errors.Is(err, zspotify.ErrNoMorePages) {
+				break
+			}
+			return out, err
+		}
 	}
 	return out, nil
 }
 
-// PlaylistTracks returns the tracks of a playlist.
-func (c *Client) PlaylistTracks(ctx context.Context, id zspotify.ID) ([]Track, error) {
-	page, err := c.api.GetPlaylistItems(ctx, id, zspotify.Limit(100))
+// Page sizes for streamed track listings: the API maxima for each endpoint.
+const (
+	likedPageSize    = 50
+	playlistPageSize = 100
+)
+
+// TrackPage is one page of a paginated track listing. The caller streams pages
+// by re-requesting at NextOffset while HasMore reports true.
+type TrackPage struct {
+	Tracks []Track // playable tracks in this page (unplayable items are skipped)
+	Offset int     // raw item offset this page began at
+	Total  int     // total items available across all pages
+
+	next int  // raw offset for the following page
+	more bool // whether any items remain after this page
+}
+
+// HasMore reports whether further pages remain.
+func (p TrackPage) HasMore() bool { return p.more }
+
+// NextOffset is the offset to request for the following page.
+func (p TrackPage) NextOffset() int { return p.next }
+
+// LikedSongsPage returns one page of the user's saved tracks starting at offset.
+// Stream the full collection by following HasMore/NextOffset.
+func (c *Client) LikedSongsPage(ctx context.Context, offset int) (TrackPage, error) {
+	page, err := c.api.CurrentUsersTracks(ctx, zspotify.Limit(likedPageSize), zspotify.Offset(offset))
 	if err != nil {
-		return nil, err
+		return TrackPage{}, err
+	}
+	out := make([]Track, 0, len(page.Tracks))
+	for i := range page.Tracks {
+		out = append(out, toTrack(&page.Tracks[i].FullTrack))
+	}
+	return newTrackPage(out, offset, len(page.Tracks), int(page.Total)), nil
+}
+
+// PlaylistTracksPage returns one page of a playlist's tracks starting at offset.
+// Stream the full playlist by following HasMore/NextOffset.
+func (c *Client) PlaylistTracksPage(ctx context.Context, id zspotify.ID, offset int) (TrackPage, error) {
+	page, err := c.api.GetPlaylistItems(ctx, id, zspotify.Limit(playlistPageSize), zspotify.Offset(offset))
+	if err != nil {
+		return TrackPage{}, err
 	}
 	out := make([]Track, 0, len(page.Items))
 	for _, it := range page.Items {
@@ -108,20 +164,22 @@ func (c *Client) PlaylistTracks(ctx context.Context, id zspotify.ID) ([]Track, e
 			out = append(out, toTrack(it.Track.Track))
 		}
 	}
-	return out, nil
+	// Advance by the raw item count, not len(out): unplayable items are filtered
+	// from Tracks but still consume an offset slot.
+	return newTrackPage(out, offset, len(page.Items), int(page.Total)), nil
 }
 
-// LikedSongs returns the user's saved tracks.
-func (c *Client) LikedSongs(ctx context.Context) ([]Track, error) {
-	page, err := c.api.CurrentUsersTracks(ctx, zspotify.Limit(50))
-	if err != nil {
-		return nil, err
+// newTrackPage computes pagination state from the raw item count this page
+// consumed (raw), independent of how many were kept as playable tracks.
+func newTrackPage(tracks []Track, offset, raw, total int) TrackPage {
+	next := offset + raw
+	return TrackPage{
+		Tracks: tracks,
+		Offset: offset,
+		Total:  total,
+		next:   next,
+		more:   raw > 0 && next < total,
 	}
-	out := make([]Track, 0, len(page.Tracks))
-	for i := range page.Tracks {
-		out = append(out, toTrack(&page.Tracks[i].FullTrack))
-	}
-	return out, nil
 }
 
 // RecentlyPlayed returns recently played tracks.

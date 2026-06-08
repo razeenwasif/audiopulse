@@ -108,7 +108,17 @@ now-playing. The "AudioPulse" device is discovered via `WaitForDevice`.
 - **Transparency:** Windows Terminal renders explicit-bg cells opaque; `fillBG` paints every cell. The *degree* of transparency is a terminal setting, not app-controllable.
 - **Mouse hit-testing must match render geometry** — both use the shared helpers (`panelDims`, `trackWindow`, `centerGeom`, `progressMetrics`, `libVisible`). If you change layout offsets, update `spotify_mouse.go`.
 - **Spotify Web API quirks:** shuffle/repeat aren't reliably reported for a librespot device (tracked locally instead); **smart shuffle has no Web API endpoint** (S shows a message); "No active device" is handled by transferring playback to the librespot device.
+- **Visualizer is synthesized, not real audio** (ADR-0008): librespot never hands AudioPulse the PCM, so `vizLevels` generates the spectrum procedurally (sine layers advanced by `vizFrame`), driven only by play/pause. It animates on a separate ~8 fps `vizTickMsg` gated by `vizActive()` (playing **and** width ≥ 112), with a `vizTicking` guard; the loop ends on pause/hide and restarts from the 1 Hz poll. Right column is now two stacked **light-green-bordered** panels (`lightPanelBox`): Now Playing (`renderNowPlaying`) over Visualizer (`renderVisualizer`/`renderBars`). Real FFT would mean tapping the PulseAudio monitor source — the single seam to swap is `vizLevels`.
+- **Pagination:** list endpoints return one page (Liked Songs ≤50, playlist items ≤100, playlists ≤50) — you must follow the cursor. Track lists are **streamed page-by-page in the background** (`LikedSongsPage`/`PlaylistTracksPage` + `beginTrackLoad`/`loadTrackPageCmd`) so the first page shows instantly and `Loading… N/Total` fills in; a `loadGen` token drops pages from a superseded source switch. Playlist offsets advance by the **raw** item count (unplayable items are filtered from the display but still consume a slot). Context-less playback (Liked/Recent/Search) sends a bounded 500-URI window (`maxPlayURIs`) since the play endpoint rejects huge arrays.
 - **Standing user preferences (in agent memory):** (a) don't touch `/mnt/c` Windows host files unless asked; (b) **update all docs before every commit/push**.
+
+## Performance backlog
+
+Profiling-driven CPU/memory optimization ideas are documented (not yet
+implemented) in **`docs/performance.md`** — idle-tick throttling, split Spotify
+polling (State vs Queue), rendered-row caching, truncation/builder allocation
+wins, an album-art LRU, smaller cover images, and more. Start there before any
+perf work.
 
 ## Known open items / possible next steps
 

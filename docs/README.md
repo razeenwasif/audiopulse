@@ -19,6 +19,8 @@ reference for users, operators, and contributors.
 - **[Development](development.md)** — environment setup, project layout, the
   build-tag strategy, and the testing approach.
 - **[Configuration](configuration.md)** — build-time and runtime configuration.
+- **[Performance backlog](performance.md)** — profiling-driven CPU/memory
+  optimization ideas (not yet implemented), with file pointers and priorities.
 - **[Architecture Decision Records](adr/)** — the *why* behind major technical
   choices.
 

@@ -272,7 +272,12 @@ func (m Spotify) renderCenter(outerWidth int) string {
 
 	sub := fmt.Sprintf("%d tracks", len(m.tracks))
 	if m.loading {
-		sub = "Loading…"
+		// Pages stream in the background; show progress as they arrive.
+		if m.tracksTotal > len(m.tracks) {
+			sub = fmt.Sprintf("Loading… %d/%d", len(m.tracks), m.tracksTotal)
+		} else {
+			sub = "Loading…"
+		}
 	}
 	if m.err != nil {
 		sub = "⚠ " + m.err.Error()
@@ -356,9 +361,34 @@ func (m Spotify) renderTrackList(w, h int) string {
 
 // --- right (now playing) -----------------------------------------------------
 
+// renderRight stacks the now-playing panel above the CAVA-style visualizer,
+// both with a light-green border, filling the right column.
 func (m Spotify) renderRight() string {
-	box := panelBox(false, 0, 1)
-	sw, sh, tw, th := panelDims(box, spotifyRightWidth, m.middleHeight())
+	total := m.middleHeight()
+
+	// Give the visualizer a compact slice of the column; the rest is now-playing.
+	vizOuter := total / 3
+	if vizOuter > 11 {
+		vizOuter = 11
+	}
+	if vizOuter < 7 {
+		vizOuter = 7
+	}
+	if vizOuter > total-6 {
+		vizOuter = total - 6
+	}
+	if vizOuter < 5 {
+		// Too short to split sensibly; show now-playing across the whole column.
+		return m.renderNowPlaying(total)
+	}
+	now := m.renderNowPlaying(total - vizOuter)
+	viz := m.renderVisualizer(vizOuter)
+	return lipgloss.JoinVertical(lipgloss.Left, now, viz)
+}
+
+func (m Spotify) renderNowPlaying(outerHeight int) string {
+	box := lightPanelBox(0, 1)
+	sw, sh, tw, th := panelDims(box, spotifyRightWidth, outerHeight)
 
 	var b strings.Builder
 	b.WriteString(lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Now Playing"))
@@ -401,6 +431,66 @@ func (m Spotify) renderRight() string {
 		}
 	}
 	return box.Width(sw).Height(sh).Render(clipLines(b.String(), th))
+}
+
+// renderVisualizer draws the CAVA-style spectrum panel. The spectrum is a
+// procedural animation (see vizLevels) since AudioPulse can't tap librespot's
+// PCM — it animates while playing and flattens when paused.
+func (m Spotify) renderVisualizer(outerHeight int) string {
+	box := lightPanelBox(0, 1)
+	sw, sh, tw, th := panelDims(box, spotifyRightWidth, outerHeight)
+
+	var b strings.Builder
+	b.WriteString(m.st.rowMuted.Render("Visualizer"))
+	b.WriteString("\n")
+	barsH := th - 1 // reserve the label line
+	if barsH < 1 {
+		barsH = 1
+	}
+	b.WriteString(m.renderBars(tw, barsH))
+	return box.Width(sw).Height(sh).Render(clipLines(b.String(), th))
+}
+
+// vizBlocks are the eighth-height vertical block runes, index 0..8.
+var vizBlocks = []rune{' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+// renderBars renders a w×h grid of vertical bars from the current spectrum
+// levels, with a bottom-bright → top-pale green gradient.
+func (m Spotify) renderBars(w, h int) string {
+	if w < 1 || h < 1 {
+		return ""
+	}
+	levels := m.vizLevels(w)
+	var b strings.Builder
+	for row := 0; row < h; row++ {
+		fromBottom := h - 1 - row // 0 at the bottom row
+		// Color deepens toward the bottom; cells in the same row share a color.
+		col := colorAccent
+		switch frac := float64(fromBottom) / float64(h); {
+		case frac > 0.66:
+			col = colorVizTop
+		case frac > 0.33:
+			col = colorAccentHi
+		}
+		style := lipgloss.NewStyle().Foreground(col)
+		var line strings.Builder
+		for i := 0; i < w; i++ {
+			eighths := int(levels[i]*float64(h)*8) - fromBottom*8
+			if eighths <= 0 {
+				line.WriteByte(' ')
+				continue
+			}
+			if eighths > 8 {
+				eighths = 8
+			}
+			line.WriteRune(vizBlocks[eighths])
+		}
+		b.WriteString(style.Render(line.String()))
+		if row < h-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 // --- player bar --------------------------------------------------------------
