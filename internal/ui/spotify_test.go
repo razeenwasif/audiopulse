@@ -259,6 +259,40 @@ func TestDeviceRecovery(t *testing.T) {
 	}
 }
 
+func TestQueuePollingAndCadence(t *testing.T) {
+	m := sampleSpotify() // playing
+
+	// Fast while playing, slow while paused.
+	if m.pollInterval() != pollPlaying {
+		t.Error("playing should use the fast poll cadence")
+	}
+	m.state.Playing = false
+	if m.pollInterval() != pollPaused {
+		t.Error("paused should use the slow poll cadence")
+	}
+
+	// A poll that didn't fetch the queue must not wipe the displayed queue.
+	m.queue = []spotify.Track{{Title: "Up Next"}}
+	mm, _ := m.Update(playerMsg{state: m.state, hadQueue: false})
+	if len(mm.(Spotify).queue) != 1 {
+		t.Error("a queue-less poll should leave the queue unchanged")
+	}
+	// A poll that did fetch replaces it.
+	mm, _ = m.Update(playerMsg{state: m.state, queue: nil, hadQueue: true})
+	if len(mm.(Spotify).queue) != 0 {
+		t.Error("a hadQueue poll should replace the queue")
+	}
+
+	// A track change marks the queue dirty so it refetches next tick.
+	m2 := sampleSpotify()
+	m2.lastTrackID = "old"
+	nt := spotify.Track{ID: "new"}
+	mm, _ = m2.Update(playerMsg{state: &spotify.PlayerState{Track: &nt, Playing: true}})
+	if !mm.(Spotify).queueDirty {
+		t.Error("a track change should mark the queue dirty")
+	}
+}
+
 func TestWrapText(t *testing.T) {
 	if got := wrapText("alpha beta gamma", 11); len(got) != 2 || got[0] != "alpha beta" || got[1] != "gamma" {
 		t.Errorf("wrapText word-wrap = %q, want [alpha beta gamma]", got)

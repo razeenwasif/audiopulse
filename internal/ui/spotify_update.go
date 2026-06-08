@@ -18,7 +18,15 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spotifyTickMsg:
-		return m, tea.Batch(m.pollCmd(), m.tickCmd())
+		// Fetch the queue only when it likely changed, plus a slow keep-alive;
+		// tick faster while playing, slower while paused/idle.
+		m.ticksSinceQueue++
+		withQueue := m.queueDirty || m.ticksSinceQueue >= queueEveryTicks
+		if withQueue {
+			m.queueDirty = false
+			m.ticksSinceQueue = 0
+		}
+		return m, tea.Batch(m.pollCmd(withQueue), m.tickCmd(m.pollInterval()))
 
 	case libraryMsg:
 		if msg.err != nil {
@@ -63,7 +71,14 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.state != nil {
 			m.state = msg.state
 		}
-		m.queue = msg.queue
+		if msg.hadQueue {
+			m.queue = msg.queue
+		}
+		// A track change means the up-next queue moved on — refetch it next tick.
+		if m.state != nil && m.state.Track != nil && m.state.Track.ID != m.lastTrackID {
+			m.lastTrackID = m.state.Track.ID
+			m.queueDirty = true
+		}
 		var cmds []tea.Cmd
 		// Load album art when the track's cover changes (only if the right
 		// panel is visible).
@@ -180,7 +195,7 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.status = "Playback action failed."
 		}
-		return m, m.pollCmd()
+		return m, m.pollCmd(true)
 
 	case deviceMsg:
 		if msg.id != "" {
@@ -190,7 +205,7 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = "Playback device unavailable — is librespot running?"
 		}
-		return m, m.pollCmd()
+		return m, m.pollCmd(true)
 
 	case tea.MouseMsg:
 		return m.handleMouse(msg)

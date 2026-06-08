@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shown as `vol N%`.
 
 ### Changed
+- **Lower idle cost**: the player now polls **faster while playing (1s)** and
+  **slower while paused/idle (4s)**, and the heavier up-next `Queue()` call is
+  fetched only on track changes / playback actions plus a slow keep-alive instead
+  of every second. Roughly halves steady-state API traffic and idle redraws
+  (`docs/performance.md` #1–2).
 - **librespot is now supervised**: if the playback device process crashes it is
   automatically restarted with exponential backoff (capped at 30s) for the life
   of the app, instead of playback silently dying. Logs append across restarts.

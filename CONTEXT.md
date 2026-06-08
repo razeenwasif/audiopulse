@@ -123,6 +123,15 @@ ignored.
 - **Pagination:** list endpoints return one page (Liked Songs ≤50, playlist items ≤100, playlists ≤50) — you must follow the cursor. Track lists are **streamed page-by-page in the background** (`LikedSongsPage`/`PlaylistTracksPage` + `beginTrackLoad`/`loadTrackPageCmd`) so the first page shows instantly and `Loading… N/Total` fills in; a `loadGen` token drops pages from a superseded source switch. Playlist offsets advance by the **raw** item count (unplayable items are filtered from the display but still consume a slot). Context-less playback (Liked/Recent/Search) sends a bounded 500-URI window (`maxPlayURIs`) since the play endpoint rejects huge arrays.
 - **Standing user preferences (in agent memory):** (a) don't touch `/mnt/c` Windows host files unless asked; (b) **update all docs before every commit/push**.
 
+## Performance (some implemented)
+
+Poll cadence is now state-dependent — `pollInterval()` returns `pollPlaying` (1s)
+while playing, `pollPaused` (4s) when paused/idle — and `pollCmd(withQueue bool)`
+fetches the heavier `Queue()` only when `queueDirty` (track change / action) or a
+keep-alive (`queueEveryTicks`). `playerMsg.hadQueue` guards against wiping the
+queue on a state-only poll. Visualizer hot path preallocates its builder
+(`b.Grow`). Backlog items #1, #2, #5 are done; see below for the rest.
+
 ## Performance backlog
 
 Profiling-driven CPU/memory optimization ideas are documented (not yet

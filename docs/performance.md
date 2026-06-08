@@ -26,7 +26,10 @@ CPU sample while the app idles vs. plays) — don't optimize blind.
 
 ## CPU
 
-### 1. Stop full-screen redraws when nothing changes
+> **Status:** #1 (idle-tick throttling) and #2 (split State/Queue polling) are
+> **implemented**; #5 is applied to the visualizer hot path. The rest remain open.
+
+### 1. Stop full-screen redraws when nothing changes — DONE (poll cadence)
 
 **Problem.** The UI ticks on a fixed timer and rebuilds the entire view string
 (with Lip Gloss styling, `fillBG`, and — in Spotify mode — the album-art ANSI)
@@ -51,7 +54,7 @@ Bubble Tea re-renders on every message, so fewer ticks ⇒ fewer full renders.
 > visible (`vizActive()`), and ends on pause/hide. The redraw cost is the
 > incentive to land this item: at 8 fps the per-frame `View()` cost matters more.
 
-### 2. Reduce Spotify polling
+### 2. Reduce Spotify polling — DONE
 
 **Problem.** `pollCmd` in `internal/ui/spotify_model.go` calls **both** `State()`
 and `Queue()` every second. `Queue()` (`GET /me/player/queue`) is the heavier

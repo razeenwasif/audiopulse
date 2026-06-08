@@ -104,6 +104,12 @@ type Spotify struct {
 	state *spotify.PlayerState
 	queue []spotify.Track
 
+	// Queue polling: the up-next queue is fetched only when it likely changed
+	// (track change / explicit action) plus a slow keep-alive, not every tick.
+	queueDirty      bool
+	ticksSinceQueue int
+	lastTrackID     zspotify.ID // detects track changes to refresh the queue
+
 	// Shuffle/repeat are tracked locally and start off. The Web API doesn't
 	// reliably report these for a librespot device, so seeding from it flipped the
 	// glyphs the wrong way — the user's keypresses are the single source of truth.
@@ -170,6 +176,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		centerTab:    "music",
 		podcastFocus: "shows",
 		showsLoading: true, // Init fetches saved shows up front
+		queueDirty:   true, // fetch the up-next queue on the first tick
 		status:       "Loading your library…",
 	}
 }
@@ -194,7 +201,7 @@ func artDims(cellAspect float64) (w, h int) {
 func (m Spotify) Init() tea.Cmd {
 	// Load saved podcasts up front too, so the podcast pane is populated even in
 	// the side-by-side layout where it's visible without being focused.
-	return tea.Batch(m.loadLibraryCmd(), m.loadShowsCmd(), m.tickCmd(), textinput.Blink)
+	return tea.Batch(m.loadLibraryCmd(), m.loadShowsCmd(), m.tickCmd(pollPlaying), textinput.Blink)
 }
 
 // --- messages ---------------------------------------------------------------
@@ -214,8 +221,9 @@ type tracksPageMsg struct {
 	err    error
 }
 type playerMsg struct {
-	state *spotify.PlayerState
-	queue []spotify.Track
+	state    *spotify.PlayerState
+	queue    []spotify.Track
+	hadQueue bool // whether queue was fetched this poll (else leave it unchanged)
 }
 type showsMsg struct {
 	shows []spotify.Show
@@ -250,8 +258,25 @@ type lyricsMsg struct {
 
 // --- commands ---------------------------------------------------------------
 
-func (m Spotify) tickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return spotifyTickMsg(t) })
+// Poll cadences: fast while playing (to advance the progress bar), slow while
+// paused/idle (nothing moves). The heavier Queue() call is decoupled from this —
+// see pollCmd / queueEveryTicks.
+const (
+	pollPlaying     = time.Second
+	pollPaused      = 4 * time.Second
+	queueEveryTicks = 20 // keep-alive: refetch the queue at most this often
+)
+
+// pollInterval picks the tick cadence for the current playback state.
+func (m Spotify) pollInterval() time.Duration {
+	if m.isPlaying() {
+		return pollPlaying
+	}
+	return pollPaused
+}
+
+func (m Spotify) tickCmd(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(t time.Time) tea.Msg { return spotifyTickMsg(t) })
 }
 
 // vizFrameRate is the visualizer animation cadence (~8 fps). It only runs while
@@ -596,14 +621,20 @@ func (m Spotify) loadArtCmd(url string) tea.Cmd {
 	}
 }
 
-func (m Spotify) pollCmd() tea.Cmd {
+// pollCmd fetches the now-playing state, and the up-next queue only when asked
+// (Queue() is the heavier call and rarely changes between ticks).
+func (m Spotify) pollCmd(withQueue bool) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 		defer cancel()
 		state, _ := client.State(ctx)
-		queue, _ := client.Queue(ctx)
-		return playerMsg{state: state, queue: queue}
+		msg := playerMsg{state: state}
+		if withQueue {
+			msg.queue, _ = client.Queue(ctx)
+			msg.hadQueue = true
+		}
+		return msg
 	}
 }
 

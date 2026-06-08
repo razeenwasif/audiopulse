@@ -859,6 +859,7 @@ func (m Spotify) renderBars(w, h int) string {
 	nbars := (w + 1) / 2 // a bar on even columns, a gap on odd ones
 	levels := m.vizLevels(nbars)
 	var b strings.Builder
+	b.Grow(h * (w*4 + 24)) // bars run at ~8 fps; avoid per-frame reslicing
 	for row := 0; row < h; row++ {
 		fromBottom := h - 1 - row // 0 at the bottom row
 		// Color deepens toward the bottom; cells in the same row share a color.
