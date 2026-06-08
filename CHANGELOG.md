@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Keybinding cheatsheet** — press `?` for a floating overlay listing every
+  shortcut (the bottom help line is truncated on narrow terminals). Any key closes.
+- **Episode preview** — in the Podcasts pane, a show's episodes now load into the
+  detail box **as you move the cursor** over the show list (debounced, without
+  moving focus); `enter` still opens and focuses them. The first saved show is
+  previewed automatically.
 - **Add to queue** — press `a` on a selected track to queue it after the current
   one (shows in Up Next on the next poll). Track-only for now (the Web API queue
   helper doesn't take episode URIs).

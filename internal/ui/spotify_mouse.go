@@ -128,7 +128,7 @@ func (m *Spotify) clickPodcast(y int) tea.Cmd {
 		if row := y - m.podcastShowsListY(); row >= 0 && start+row < end {
 			m.showCursor = start + row
 			m.episodesLoading = true
-			return m.loadEpisodesCmd(m.shows[m.showCursor])
+			return m.loadEpisodesCmd(m.shows[m.showCursor], true)
 		}
 		return loadCmd
 	}

@@ -137,6 +137,11 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.shows = msg.shows
 		m.showsLoaded = true
 		m.showCursor = clamp(m.showCursor, 0, max0(len(m.shows)-1))
+		// Preview the first show's episodes so the detail box isn't empty.
+		if len(m.shows) > 0 && m.currentShow.ID == "" {
+			m.episodesLoading = true
+			return m, m.loadEpisodesCmd(m.shows[0], false)
+		}
 		return m, nil
 
 	case episodesMsg:
@@ -149,7 +154,17 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.currentShow = msg.show
 		m.episodes = msg.episodes
 		m.episodeCursor = 0
-		m.podcastFocus = "episodes"
+		if msg.focus {
+			m.podcastFocus = "episodes" // opened with Enter/click
+		}
+		return m, nil
+
+	case episodeDebounceMsg:
+		// Only the latest settled show cursor previews its episodes.
+		if msg.gen == m.epLoadGen && m.focus == panelPodcasts {
+			m.episodesLoading = true
+			return m, m.loadEpisodesCmd(msg.show, false)
+		}
 		return m, nil
 
 	case vizTickMsg:
@@ -263,6 +278,15 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Keybinding cheatsheet: any key (or ?) dismisses it.
+	if m.showHelp {
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+		m.showHelp = false
+		return m, nil
+	}
+
 	// Floating full-lyrics modal: keys scroll it or close it.
 	if m.lyricsModal {
 		switch msg.String() {
@@ -292,6 +316,10 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 
+	case "?":
+		m.showHelp = true
+		return m, nil
+
 	case "/":
 		m.focus = panelSearch
 		return m, m.search.Focus()
@@ -304,16 +332,16 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "up", "k":
 		m.moveCursor(-1)
-		return m, nil
+		return m, m.maybeAutoLoadEpisodes()
 	case "down", "j":
 		m.moveCursor(1)
-		return m, nil
+		return m, m.maybeAutoLoadEpisodes()
 	case "g", "home":
 		m.setCursor(0)
-		return m, nil
+		return m, m.maybeAutoLoadEpisodes()
 	case "G", "end":
 		m.setCursor(1 << 30)
-		return m, nil
+		return m, m.maybeAutoLoadEpisodes()
 
 	case "enter":
 		switch m.focus {
@@ -333,7 +361,7 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.episodesLoading = true
-				return m, m.loadEpisodesCmd(m.shows[m.showCursor])
+				return m, m.loadEpisodesCmd(m.shows[m.showCursor], true)
 			}
 			return m, m.playEpisodeCmd()
 		default:
@@ -519,6 +547,24 @@ func (m *Spotify) openLyricsModal() {
 	m.lyricsModal = true
 	m.lyricsFollow = true
 	m.lyricsScroll = m.lyricsModalStart()
+}
+
+// maybeAutoLoadEpisodes schedules a debounced preview of the highlighted show's
+// episodes (without moving focus), so browsing the show list updates the detail
+// box. No-op unless the shows sub-pane is focused on a different show.
+func (m *Spotify) maybeAutoLoadEpisodes() tea.Cmd {
+	if m.focus != panelPodcasts || m.podcastFocus != "shows" {
+		return nil
+	}
+	if m.showCursor < 0 || m.showCursor >= len(m.shows) {
+		return nil
+	}
+	show := m.shows[m.showCursor]
+	if show.ID == m.currentShow.ID {
+		return nil // already previewing this show
+	}
+	m.epLoadGen++
+	return m.episodeDebounceCmd(show, m.epLoadGen)
 }
 
 // isDeviceError reports whether err looks like a Spotify "no active device" or

@@ -45,9 +45,10 @@ A complete tour of AudioPulse's interface and controls.
   - **Podcasts** — split into **your shows** (top) and the **episodes** of the
     opened show (bottom), both visible at once. Shows are the ones you **Follow**
     in Spotify (the API only returns followed/saved shows, so a podcast you've
-    merely listened to won't appear until you follow it). `enter` on a show opens
-    its episodes below and moves focus there; `enter` on an episode plays it; `esc`
-    moves focus back up to the show list. Episodes that are region-locked or hosted
+    merely listened to won't appear until you follow it). Episodes **preview in the
+    bottom box as you move over the show list**; `enter` on a show opens its
+    episodes and moves focus there; `enter` on an episode plays it; `esc` moves
+    focus back up to the show list. Episodes that are region-locked or hosted
     off Spotify are marked `⊘` and dimmed (and may not play — see below).
 - **Now Playing** (top right) — album art, track/artist/album, and the up-next
   queue, in a light-green-bordered panel.
@@ -66,7 +67,7 @@ a show's episodes / plays an episode (Podcasts), or — on the Lyrics panel — 
 the full-lyrics pane; `a` adds the selected track to the play queue; `esc` backs
 out of a show's episodes; `space` play/pause;
 `n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R`
-loop-all/loop-one (repeat); `/` opens search; `q` quit. The shuffle and repeat glyphs turn
+loop-all/loop-one (repeat); `/` opens search; `?` shows all shortcuts; `q` quit. The shuffle and repeat glyphs turn
 **green** when active. (*Smart shuffle* has no Web API endpoint and can't be
 toggled here; pressing `S` says so.) **Mouse:** wheel scrolls the panel under the
 pointer; click a library entry to open it; click a track to play it; click the

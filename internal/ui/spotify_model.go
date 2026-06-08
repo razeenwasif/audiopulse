@@ -99,6 +99,7 @@ type Spotify struct {
 	episodes        []spotify.Episode
 	episodeCursor   int
 	episodesLoading bool
+	epLoadGen       int // debounce generation for auto-preview of episodes
 	podErr          error
 
 	state *spotify.PlayerState
@@ -132,6 +133,9 @@ type Spotify struct {
 	lyricsInstrumental bool
 	lyricsState        string      // "" | loading | ready | none | instrumental | err
 	lyricsForID        zspotify.ID // the track the lyrics are for/loading
+
+	// Floating keybinding cheatsheet (toggled with ?).
+	showHelp bool
 
 	// Floating full-lyrics modal (opened with Enter on the focused lyrics panel).
 	lyricsModal  bool
@@ -232,7 +236,15 @@ type showsMsg struct {
 type episodesMsg struct {
 	show     spotify.Show
 	episodes []spotify.Episode
+	focus    bool // move focus to the episodes box (Enter/click), vs just preview
 	err      error
+}
+
+// episodeDebounceMsg fires after the show cursor settles, to preview that show's
+// episodes without an API call per keystroke.
+type episodeDebounceMsg struct {
+	gen  int
+	show spotify.Show
 }
 type actionMsg struct{ err error }
 type deviceMsg struct{ id string } // recovered librespot device id ("" = not found)
@@ -407,14 +419,21 @@ func (m Spotify) loadShowsCmd() tea.Cmd {
 	}
 }
 
-func (m Spotify) loadEpisodesCmd(show spotify.Show) tea.Cmd {
+func (m Spotify) loadEpisodesCmd(show spotify.Show, focus bool) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		eps, err := client.ShowEpisodes(ctx, show.ID)
-		return episodesMsg{show: show, episodes: eps, err: err}
+		return episodesMsg{show: show, episodes: eps, focus: focus, err: err}
 	}
+}
+
+// episodeDebounceCmd previews a highlighted show's episodes after a short pause.
+func (m Spotify) episodeDebounceCmd(show spotify.Show, gen int) tea.Cmd {
+	return tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+		return episodeDebounceMsg{gen: gen, show: show}
+	})
 }
 
 // playEpisodeCmd plays the selected episode and continues through the rest of

@@ -318,6 +318,47 @@ func TestAddToQueue(t *testing.T) {
 	}
 }
 
+func TestCheatsheet(t *testing.T) {
+	m := sampleSpotify()
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	sp := mm.(Spotify)
+	if !sp.showHelp {
+		t.Fatal("? should open the cheatsheet")
+	}
+	if !strings.Contains(sp.View(), "Keyboard shortcuts") {
+		t.Error("cheatsheet overlay not rendered")
+	}
+	mm, _ = sp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if mm.(Spotify).showHelp {
+		t.Error("any key should close the cheatsheet")
+	}
+}
+
+func TestEpisodeAutoPreview(t *testing.T) {
+	m := sampleSpotify()
+	// Loading shows previews the first show's episodes (no focus steal).
+	mm, cmd := m.Update(showsMsg{shows: []spotify.Show{{ID: "s1", Name: "A"}, {ID: "s2", Name: "B"}}})
+	sp := mm.(Spotify)
+	if cmd == nil || !sp.episodesLoading {
+		t.Error("loading shows should auto-preview the first show's episodes")
+	}
+
+	// Browsing the (focused) show list schedules a debounced preview.
+	sp.focus = panelPodcasts
+	sp.podcastFocus = "shows"
+	sp.currentShow = spotify.Show{ID: "s1"}
+	mm, cmd = sp.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if cmd == nil {
+		t.Error("moving the show cursor should schedule an episode preview")
+	}
+
+	// A preview load (focus=false) must not move focus to the episodes box.
+	mm, _ = sp.Update(episodesMsg{show: spotify.Show{ID: "s2"}, episodes: []spotify.Episode{{Title: "E"}}, focus: false})
+	if mm.(Spotify).podcastFocus != "shows" {
+		t.Error("an episode preview should not steal focus from the shows list")
+	}
+}
+
 func TestWrapText(t *testing.T) {
 	if got := wrapText("alpha beta gamma", 11); len(got) != 2 || got[0] != "alpha beta" || got[1] != "gamma" {
 		t.Errorf("wrapText word-wrap = %q, want [alpha beta gamma]", got)

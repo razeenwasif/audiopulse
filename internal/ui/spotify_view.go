@@ -63,7 +63,59 @@ func (m Spotify) View() string {
 		y := (m.height - lipgloss.Height(box)) / 2
 		out = overlay(out, box, max0(x), max0(y))
 	}
+
+	// Float the keybinding cheatsheet, centered.
+	if m.showHelp {
+		box := m.renderCheatsheet()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
 	return out
+}
+
+// renderCheatsheet builds the floating keybinding reference.
+func (m Spotify) renderCheatsheet() string {
+	keys := []struct{ k, d string }{
+		{"tab / shift+tab", "cycle panels (Library · Music · Podcasts · Lyrics)"},
+		{"↑ ↓ / j k", "move selection"},
+		{"g / G", "jump to top / bottom"},
+		{"enter", "open playlist/show · play track/episode · expand lyrics"},
+		{"a", "add the selected track to the queue"},
+		{"space / p", "play / pause"},
+		{"n / b", "next / previous"},
+		{"← → / h l", "seek backward / forward"},
+		{"+ / -", "volume up / down"},
+		{"s", "shuffle"},
+		{"r / R", "loop all / loop one"},
+		{"/", "search (Spotlight)"},
+		{"esc", "back · close overlay"},
+		{"?", "toggle this help"},
+		{"q", "quit"},
+	}
+
+	kw := 0
+	for _, r := range keys {
+		if w := lipgloss.Width(r.k); w > kw {
+			kw = w
+		}
+	}
+	keyStyle := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(colorMuted)
+
+	title := lipgloss.NewStyle().Foreground(colorText).Bold(true).Render("Keyboard shortcuts")
+	var rows []string
+	for _, r := range keys {
+		rows = append(rows, keyStyle.Render(padRight(r.k, kw))+"  "+descStyle.Render(r.d))
+	}
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render("press any key to close")
+
+	body := lipgloss.JoinVertical(lipgloss.Left, append([]string{title, ""}, append(rows, "", hint)...)...)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).
+		Render(body)
+	return solidify(box, spotlightBGCode)
 }
 
 func max0(n int) int {
