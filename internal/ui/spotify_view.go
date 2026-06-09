@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -71,7 +73,104 @@ func (m Spotify) View() string {
 		y := (m.height - lipgloss.Height(box)) / 2
 		out = overlay(out, box, max0(x), max0(y))
 	}
+
+	// Float the library-export overlay, centered.
+	if m.exportState != "" {
+		box := m.renderExport()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
 	return out
+}
+
+// renderExport builds the library-export overlay for its current state.
+func (m Spotify) renderExport() string {
+	boxW := clamp(m.width*3/5, 50, 80)
+	innerW := boxW - 4
+	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(colorMuted)
+	faint := lipgloss.NewStyle().Foreground(colorFaint)
+	keyHint := func(k, d string) string {
+		return lipgloss.NewStyle().Foreground(colorAccentHi).Render(k) + faint.Render(" "+d)
+	}
+
+	var lines []string
+	switch m.exportState {
+	case "gathering":
+		lines = []string{
+			title.Render("Preparing export"),
+			"",
+			dim.Render("Scanning your library (playlists + Liked Songs)…"),
+			"",
+			faint.Render("Esc to cancel"),
+		}
+	case "confirm":
+		lines = []string{
+			title.Render("Export your library"),
+			"",
+			dim.Render(fmt.Sprintf("%d tracks  →  %s", len(m.exportURIs), m.exportDir)),
+			"",
+			faint.Render("Downloaded via spotDL (YouTube source, lossy; resumable)."),
+			faint.Render("Large libraries take a while and several GB of space."),
+			"",
+			keyHint("Enter", "start") + "    " + keyHint("Esc", "cancel"),
+		}
+	case "running":
+		p := m.exportProg
+		lines = []string{
+			title.Render("Exporting…"),
+			"",
+			exportBar(p.Processed(), p.Total, innerW),
+			dim.Render(fmt.Sprintf("%d / %d   ·   %d skipped   ·   %d failed", p.Done, p.Total, p.Skipped, p.Failed)),
+			faint.Render(truncate("now: "+p.Current, innerW)),
+			"",
+			faint.Render("Esc to cancel (downloaded files are kept)"),
+		}
+	case "done":
+		p := m.exportProg
+		switch {
+		case p.Err != nil && !errors.Is(p.Err, context.Canceled):
+			lines = []string{title.Render("Export failed"), "", dim.Render(truncate(p.Err.Error(), innerW))}
+		case len(m.exportURIs) == 0:
+			lines = []string{title.Render("Nothing to export"), "", dim.Render("No tracks found in your playlists or Liked Songs.")}
+		default:
+			head := "Export complete"
+			if errors.Is(p.Err, context.Canceled) {
+				head = "Export cancelled"
+			}
+			lines = []string{
+				title.Render(head),
+				"",
+				dim.Render(fmt.Sprintf("%d downloaded · %d skipped · %d failed", p.Done, p.Skipped, p.Failed)),
+				dim.Render(truncate("Saved to "+m.exportDir, innerW)),
+			}
+		}
+		lines = append(lines, "", faint.Render("press any key to close"))
+	}
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
+	return solidify(box, spotlightBGCode)
+}
+
+// exportBar renders a simple filled/empty progress bar of width w.
+func exportBar(done, total, w int) string {
+	if w < 1 {
+		w = 1
+	}
+	frac := 0.0
+	if total > 0 {
+		frac = float64(done) / float64(total)
+	}
+	if frac > 1 {
+		frac = 1
+	}
+	filled := int(frac * float64(w))
+	return lipgloss.NewStyle().Foreground(colorAccent).Render(strings.Repeat("█", filled)) +
+		lipgloss.NewStyle().Foreground(colorFaint).Render(strings.Repeat("░", w-filled))
 }
 
 // renderCheatsheet builds the floating keybinding reference.
@@ -84,6 +183,7 @@ func (m Spotify) renderCheatsheet() string {
 		{"a", "add the selected track to the queue"},
 		{"L", "like / unlike the selected or playing track"},
 		{"F", "unfollow the highlighted podcast"},
+		{"e", "export your library to local files (spotDL)"},
 		{"space / p", "play / pause"},
 		{"n / b", "next / previous"},
 		{"← → / h l", "seek backward / forward"},

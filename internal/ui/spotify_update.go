@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"audiopulse/internal/downloader"
 	"audiopulse/internal/spotify"
 )
 
@@ -246,6 +247,36 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.pollCmd(true)
 
+	case exportGatheredMsg:
+		if m.exportState != "gathering" {
+			return m, nil // cancelled while scanning
+		}
+		if msg.err != nil {
+			m.exportState = "done"
+			m.exportProg = downloader.Progress{Finished: true, Err: msg.err}
+			return m, nil
+		}
+		m.exportURIs = msg.uris
+		m.exportDir = msg.dir
+		if len(m.exportURIs) == 0 {
+			m.exportState = "done" // nothing to export
+			return m, nil
+		}
+		m.exportState = "confirm"
+		return m, nil
+
+	case exportProgressMsg:
+		m.exportProg = msg.p
+		if msg.p.Finished {
+			if m.exportCancel != nil {
+				m.exportCancel()
+				m.exportCancel = nil
+			}
+			m.exportState = "done"
+			return m, nil
+		}
+		return m, waitExportCmd(m.exportCh)
+
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 
@@ -302,6 +333,11 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Library export overlay owns the keyboard while active.
+	if m.exportState != "" {
+		return m.handleExportKey(msg)
+	}
+
 	// Keybinding cheatsheet: any key (or ?) dismisses it.
 	if m.showHelp {
 		if msg.String() == "ctrl+c" {
@@ -343,6 +379,16 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.showHelp = true
 		return m, nil
+
+	case "e":
+		// Export the whole library (Liked Songs + playlists) to local files.
+		if !downloader.Available() {
+			m.status = "Exporter not installed — run 'make spotdl'."
+			return m, nil
+		}
+		m.exportState = "gathering"
+		m.status = ""
+		return m, m.gatherExportCmd()
 
 	case "/":
 		m.focus = panelSearch
@@ -614,6 +660,49 @@ func (m *Spotify) maybeAutoLoadEpisodes() tea.Cmd {
 	}
 	m.epLoadGen++
 	return m.episodeDebounceCmd(show, m.epLoadGen)
+}
+
+// handleExportKey drives the export overlay's state machine.
+func (m Spotify) handleExportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "ctrl+c" {
+		if m.exportCancel != nil {
+			m.exportCancel()
+		}
+		return m, tea.Quit
+	}
+	switch m.exportState {
+	case "gathering":
+		if msg.String() == "esc" {
+			m.exportState = "" // abandon (the gather command result is ignored)
+		}
+	case "confirm":
+		switch msg.String() {
+		case "enter":
+			return m.startExport()
+		case "esc", "q":
+			m.exportState = ""
+		}
+	case "running":
+		if s := msg.String(); s == "esc" || s == "c" {
+			if m.exportCancel != nil {
+				m.exportCancel()
+			}
+			m.status = "Cancelling export…"
+		}
+	case "done":
+		m.exportState = "" // any key closes the summary
+	}
+	return m, nil
+}
+
+// startExport kicks off the background download to the resolved output dir.
+func (m Spotify) startExport() (tea.Model, tea.Cmd) {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.exportCancel = cancel
+	m.exportCh = downloader.Export(ctx, m.exportURIs, m.exportDir)
+	m.exportProg = downloader.Progress{Total: len(m.exportURIs)}
+	m.exportState = "running"
+	return m, waitExportCmd(m.exportCh)
 }
 
 // isDeviceError reports whether err looks like a Spotify "no active device" or

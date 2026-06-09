@@ -68,7 +68,18 @@ the full-lyrics pane; `a` adds the selected track to the play queue; `L`
 likes/unlikes the selected or playing track (`♥`); `F` unfollows the highlighted
 show; `esc` backs out of a show's episodes; `space` play/pause;
 `n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R`
-loop-all/loop-one (repeat); `/` opens search; `?` shows all shortcuts; `q` quit. The shuffle and repeat glyphs turn
+loop-all/loop-one (repeat); `/` opens search; `e` exports your library to local
+files; `?` shows all shortcuts; `q` quit.
+
+**Exporting your library:** press `e` to download your **Liked Songs + all
+playlists** to local audio files via [spotDL](https://github.com/spotDL/spotify-downloader)
+(install with `make spotdl`). AudioPulse gathers every track, shows a confirmation
+(how many tracks, and the destination from your `music_dir` config — default
+`~/Music/audiopulse`), then runs a background job you can watch and cancel. It's
+**resumable** — rerun `e` later and spotDL skips files you already have. Audio is
+matched from YouTube (lossy; a few may mismatch — the summary lists failures).
+**Podcasts are not included** (spotDL can't download them; that needs the
+podcast/RSS route). The shuffle and repeat glyphs turn
 **green** when active. (*Smart shuffle* has no Web API endpoint and can't be
 toggled here; pressing `S` says so.) **Mouse:** wheel scrolls the panel under the
 pointer; click a library entry to open it; click a track to play it; click the

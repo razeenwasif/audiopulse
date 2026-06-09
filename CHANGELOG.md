@@ -61,11 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
-- **Library export foundation (spotDL)** — `make spotdl` installs the exporter,
-  `make doctor` checks spotdl/ffmpeg, and a `music_dir` config setting chooses
-  where downloads land (default `~/Music/audiopulse`). New `internal/downloader`
-  drives spotDL over your track URIs in batches with aggregate, resumable progress.
-  The in-app "export my library" action is wired up next.
+- **Export your library to local files** — press `e` to download your entire
+  Spotify library (Liked Songs + all playlists) to local audio via
+  [spotDL](https://github.com/spotDL/spotify-downloader). It gathers every track
+  URI, shows a confirmation (count + destination), then runs a background,
+  cancelable, **resumable** job with a live progress bar (downloaded / skipped /
+  failed + current track). Install with `make spotdl` (checked by `make doctor`);
+  destination is the `music_dir` config setting (default `~/Music/audiopulse`,
+  point it at a drive). Podcasts aren't included — spotDL can't do them.
 - **Like / unlike** — press `L` to save or remove the selected (or playing) track
   in your Liked Songs; the now-playing panel shows a `♥` when the current track is
   saved. **Unfollow** — press `F` on a highlighted show to unfollow it (the list

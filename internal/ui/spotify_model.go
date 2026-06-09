@@ -12,6 +12,7 @@ import (
 	zspotify "github.com/zmb3/spotify/v2"
 
 	"audiopulse/internal/config"
+	"audiopulse/internal/downloader"
 	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
 )
@@ -141,6 +142,14 @@ type Spotify struct {
 
 	// Floating keybinding cheatsheet (toggled with ?).
 	showHelp bool
+
+	// Library export (spotDL). exportState: "" | gathering | confirm | running | done.
+	exportState  string
+	exportURIs   []string
+	exportDir    string
+	exportProg   downloader.Progress
+	exportCancel context.CancelFunc
+	exportCh     <-chan downloader.Progress
 
 	// Floating full-lyrics modal (opened with Enter on the focused lyrics panel).
 	lyricsModal  bool
@@ -277,6 +286,12 @@ type artMsg struct {
 }
 type spotifyTickMsg time.Time
 type vizTickMsg time.Time
+type exportGatheredMsg struct {
+	uris []string
+	dir  string
+	err  error
+}
+type exportProgressMsg struct{ p downloader.Progress }
 type lyricsMsg struct {
 	trackID zspotify.ID
 	res     lyrics.Result
@@ -794,6 +809,39 @@ func (m Spotify) likeTarget() (zspotify.ID, bool) {
 		return m.state.Track.ID, true
 	}
 	return "", false
+}
+
+// gatherExportCmd collects every track URI (Liked Songs + all playlists) to be
+// exported, plus the resolved output directory.
+func (m Spotify) gatherExportCmd() tea.Cmd {
+	client := m.client
+	var plIDs []zspotify.ID
+	for _, it := range m.lib {
+		if it.kind == libPlaylist {
+			plIDs = append(plIDs, it.plID)
+		}
+	}
+	return func() tea.Msg {
+		dir, err := config.Load().MusicPath()
+		if err != nil {
+			return exportGatheredMsg{err: err}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		uris, err := client.ExportURIs(ctx, plIDs)
+		return exportGatheredMsg{uris: uris, dir: dir, err: err}
+	}
+}
+
+// waitExportCmd blocks for the next progress update from the export channel.
+func waitExportCmd(ch <-chan downloader.Progress) tea.Cmd {
+	return func() tea.Msg {
+		p, ok := <-ch
+		if !ok {
+			return exportProgressMsg{p: downloader.Progress{Finished: true}}
+		}
+		return exportProgressMsg{p: p}
+	}
 }
 
 // action wraps a player control call into a command.

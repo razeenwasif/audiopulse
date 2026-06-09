@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"audiopulse/internal/downloader"
 	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
 )
@@ -410,6 +411,46 @@ func TestUnfollowShow(t *testing.T) {
 	}
 	if !strings.Contains(sp.status, "Unfollowed") {
 		t.Errorf("status = %q, want an unfollow confirmation", sp.status)
+	}
+}
+
+func TestExportFlow(t *testing.T) {
+	// Confirmation screen shows the track count and is dismissible.
+	m := sampleSpotify()
+	m.exportState = "confirm"
+	m.exportURIs = []string{"spotify:track:a", "spotify:track:b"}
+	m.exportDir = "/tmp/music"
+	if !strings.Contains(m.View(), "2 tracks") {
+		t.Error("confirm overlay should show the track count")
+	}
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if mm.(Spotify).exportState != "" {
+		t.Error("Esc on confirm should cancel the export")
+	}
+
+	// An empty gather goes straight to the done/nothing state.
+	g := sampleSpotify()
+	g.exportState = "gathering"
+	mm, _ = g.Update(exportGatheredMsg{uris: nil, dir: "/tmp/m"})
+	if mm.(Spotify).exportState != "done" {
+		t.Error("an empty gather should end in the done state")
+	}
+
+	// A finished progress message ends the run.
+	r := sampleSpotify()
+	r.exportState = "running"
+	mm, _ = r.Update(exportProgressMsg{p: downloader.Progress{Total: 2, Done: 2, Finished: true}})
+	if mm.(Spotify).exportState != "done" {
+		t.Error("a finished progress update should move to done")
+	}
+
+	// `e` without spotdl installed explains instead of starting.
+	if !downloader.Available() {
+		e := sampleSpotify()
+		mm, _ = e.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+		if sp := mm.(Spotify); sp.exportState != "" || !strings.Contains(strings.ToLower(sp.status), "spotdl") {
+			t.Errorf("e without spotdl should explain; state=%q status=%q", sp.exportState, sp.status)
+		}
 	}
 }
 

@@ -318,6 +318,51 @@ func (c *Client) Queue(ctx context.Context) ([]Track, error) {
 	return out, nil
 }
 
+// ExportURIs collects the deduplicated track URIs of Liked Songs and the given
+// playlists — the full set to hand to an exporter. Best-effort: a failed
+// playlist is skipped rather than aborting the whole gather.
+func (c *Client) ExportURIs(ctx context.Context, playlistIDs []zspotify.ID) ([]string, error) {
+	seen := make(map[zspotify.URI]bool)
+	var out []string
+	add := func(u zspotify.URI) {
+		if u != "" && !seen[u] {
+			seen[u] = true
+			out = append(out, string(u))
+		}
+	}
+
+	for offset := 0; ; {
+		page, err := c.LikedSongsPage(ctx, offset)
+		if err != nil {
+			return out, err // liked is the core set; surface its failure
+		}
+		for _, t := range page.Tracks {
+			add(t.URI)
+		}
+		if !page.HasMore() {
+			break
+		}
+		offset = page.NextOffset()
+	}
+
+	for _, id := range playlistIDs {
+		for offset := 0; ; {
+			page, err := c.PlaylistTracksPage(ctx, id, offset)
+			if err != nil {
+				break // skip this playlist, keep going
+			}
+			for _, t := range page.Tracks {
+				add(t.URI)
+			}
+			if !page.HasMore() {
+				break
+			}
+			offset = page.NextOffset()
+		}
+	}
+	return out, nil
+}
+
 // --- devices & playback ------------------------------------------------------
 
 // Devices lists available Connect devices.
