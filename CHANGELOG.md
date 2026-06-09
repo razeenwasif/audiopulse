@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than every command failing against a stale device id.
 
 ### Fixed
+- Export counts are now **per distinct song**, not per output line. spotDL retries
+  failed lookups (printing the error several times) and re-reports the same song
+  reached via multiple playlists, which massively inflated the "skipped" and
+  "failed" tallies (e.g. 756 skipped / 795 failed when far fewer distinct songs
+  were involved). A dedup tally keeps each song's best outcome
+  (downloaded > already-have > not-found), so the numbers and the
+  `_export-failures.txt` list are honest. Labels reworded to "new / already had /
+  couldn't find".
 - Saved podcasts now load at startup, so the Podcasts pane is populated even in
   the side-by-side layout where it's visible without being focused (previously it
   only loaded when you Tabbed into it). The empty state now explains that you need

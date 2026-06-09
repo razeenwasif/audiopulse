@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -89,8 +90,7 @@ func run(ctx context.Context, uris []string, outDir string, ch chan<- Progress) 
 	lg.printf("=== AudioPulse export: %d tracks → %s ===", len(uris), outDir)
 
 	p := Progress{Total: len(uris)}
-	var failures []string
-	prevFailed := 0
+	t := newTally() // dedupe across all batches
 	output := filepath.Join(outDir, "{artist}", "{album}", "{title}.{output-ext}")
 
 	for start := 0; start < len(uris) && ctx.Err() == nil; start += batchSize {
@@ -128,19 +128,17 @@ func run(ctx context.Context, uris []string, outDir string, ch chan<- Progress) 
 			default:
 			}
 			lg.println(line)
-			if applyLine(&p, line) {
-				if p.Failed > prevFailed {
-					failures = append(failures, failureName(line))
-					prevFailed = p.Failed
-				}
-				ch <- p // emit on every per-track result
+			if name, changed := t.add(line); changed {
+				p.Done, p.Skipped, p.Failed = t.done(), t.skipped(), t.failed()
+				p.Current = name
+				ch <- p // emit when a distinct song's outcome changes
 			}
 		})
 		_ = cmd.Wait()
 		bcancel()
 	}
 
-	writeFailures(outDir, failures)
+	writeFailures(outDir, t.failures())
 	p.Finished = true
 	if ctx.Err() != nil && p.Err == nil {
 		p.Err = ctx.Err()
@@ -236,26 +234,81 @@ var (
 	reNoResults  = regexp.MustCompile(`No results found for song:\s*(.*)`)
 )
 
-// applyLine updates p from one spotdl output line; it returns true when the line
-// represented a per-track result worth emitting.
-func applyLine(p *Progress, line string) bool {
+// classify maps one spotdl output line to a per-song result and the song's name.
+// kind is "" for non-result lines.
+func classify(line string) (kind, name string) {
 	switch {
 	case reDownloaded.MatchString(line):
-		p.Done++
-		p.Current = firstGroup(reDownloaded, line)
-		return true
+		return "done", firstGroup(reDownloaded, line)
 	case reSkipping.MatchString(line):
-		p.Skipped++
-		p.Current = strings.TrimSpace(firstGroup(reSkipping, line))
-		return true
+		return "skip", strings.TrimSpace(firstGroup(reSkipping, line))
 	case isErrorLine(line):
-		p.Failed++
-		if m := reError.FindStringSubmatch(line); m != nil && strings.TrimSpace(m[2]) != "" {
-			p.Current = strings.TrimSpace(m[2])
-		}
-		return true
+		return "fail", failureName(line)
 	}
-	return false
+	return "", ""
+}
+
+const (
+	rankFail = 1
+	rankSkip = 2
+	rankDone = 3
+)
+
+func rankOf(kind string) int {
+	switch kind {
+	case "done":
+		return rankDone
+	case "skip":
+		return rankSkip
+	case "fail":
+		return rankFail
+	}
+	return 0
+}
+
+// tally dedupes spotdl results by song name, so retries (spotdl prints an error
+// per retry) and duplicate URIs (the same song reached via several playlists)
+// aren't counted multiple times. Each song keeps its best outcome:
+// downloaded > skipped/already-have > failed.
+type tally struct {
+	rank   map[string]int
+	counts [4]int
+}
+
+func newTally() *tally { return &tally{rank: make(map[string]int)} }
+
+// add records a line and returns the song name plus whether the totals changed.
+func (t *tally) add(line string) (string, bool) {
+	kind, name := classify(line)
+	if kind == "" {
+		return "", false
+	}
+	nr := rankOf(kind)
+	if or := t.rank[name]; nr > or {
+		if or != 0 {
+			t.counts[or]--
+		}
+		t.counts[nr]++
+		t.rank[name] = nr
+		return name, true
+	}
+	return name, false
+}
+
+func (t *tally) done() int    { return t.counts[rankDone] }
+func (t *tally) skipped() int { return t.counts[rankSkip] }
+func (t *tally) failed() int  { return t.counts[rankFail] }
+
+// failures returns the distinct song names whose best outcome was a failure.
+func (t *tally) failures() []string {
+	var out []string
+	for name, r := range t.rank {
+		if r == rankFail {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func isErrorLine(line string) bool {

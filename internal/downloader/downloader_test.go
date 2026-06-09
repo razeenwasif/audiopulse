@@ -7,38 +7,48 @@ import (
 	"testing"
 )
 
-func TestApplyLineCounts(t *testing.T) {
-	var p Progress
-	cases := []struct {
-		line             string
-		done, skip, fail int
-		emit             bool
-	}{
-		{`Downloaded "Daft Punk - Instant Crush": https://music.youtube.com/watch?v=abc`, 1, 0, 0, true},
-		{`Skipping Daft Punk - Get Lucky (file already exists) (duplicate)`, 1, 1, 0, true},
-		{`LookupError: No results found for song: Obscure Track`, 1, 1, 1, true},
-		{`Error: something went wrong`, 1, 1, 2, true},
-		{`Processing query: spotify:track:xyz`, 1, 1, 2, false}, // info line, no change
+func TestClassify(t *testing.T) {
+	cases := []struct{ line, kind, name string }{
+		{`Downloaded "Daft Punk - Instant Crush": https://x`, "done", "Daft Punk - Instant Crush"},
+		{`Skipping Daft Punk - Get Lucky (file already exists)`, "skip", "Daft Punk - Get Lucky"},
+		{`LookupError: No results found for song: Obscure Track`, "fail", "Obscure Track"},
+		{`Processing query: spotify:track:xyz`, "", ""},
 	}
-	for i, c := range cases {
-		if got := applyLine(&p, c.line); got != c.emit {
-			t.Errorf("case %d emit = %v, want %v", i, got, c.emit)
+	for _, c := range cases {
+		if k, n := classify(c.line); k != c.kind || n != c.name {
+			t.Errorf("classify(%q) = (%q,%q), want (%q,%q)", c.line, k, n, c.kind, c.name)
 		}
-		if p.Done != c.done || p.Skipped != c.skip || p.Failed != c.fail {
-			t.Errorf("case %d: done=%d skip=%d fail=%d, want %d/%d/%d",
-				i, p.Done, p.Skipped, p.Failed, c.done, c.skip, c.fail)
-		}
-	}
-	if p.Processed() != 4 {
-		t.Errorf("processed = %d, want 4", p.Processed())
 	}
 }
 
-func TestApplyLineCurrent(t *testing.T) {
-	var p Progress
-	applyLine(&p, `Downloaded "M83 - Midnight City": https://x`)
-	if p.Current != "M83 - Midnight City" {
-		t.Errorf("current = %q, want the downloaded title", p.Current)
+// TestTallyDedup reproduces the real spotdl output that inflated the counts:
+// retries print the same failure repeatedly, and duplicate URIs print the same
+// song repeatedly. The tally must count each distinct song once.
+func TestTallyDedup(t *testing.T) {
+	lines := []string{
+		`LookupError: No results found for song: Hp Boyz - SATIVA - Spotify Singles`,
+		`LookupError: No results found for song: Hp Boyz - SATIVA - Spotify Singles`, // retry
+		`Downloaded "sombr - back to friends": https://x`,
+		`Downloaded "Noah Kahan - Doors": https://y`,
+		`Downloaded "sombr - back to friends": https://x`,        // duplicate URI
+		`Skipping sombr - back to friends (file already exists)`, // duplicate URI
+		`LookupError: No results found for song: LE SSERAFIM - CRAZY`,
+	}
+	ta := newTally()
+	for _, l := range lines {
+		ta.add(l)
+	}
+	if ta.done() != 2 {
+		t.Errorf("done = %d, want 2 (sombr, Noah — sombr counted once)", ta.done())
+	}
+	if ta.failed() != 2 {
+		t.Errorf("failed = %d, want 2 (Hp Boyz, LE SSERAFIM — retries deduped)", ta.failed())
+	}
+	if ta.skipped() != 0 {
+		t.Errorf("skipped = %d, want 0 (sombr already counted downloaded)", ta.skipped())
+	}
+	if f := ta.failures(); len(f) != 2 {
+		t.Errorf("failures = %v, want 2 distinct names", f)
 	}
 }
 

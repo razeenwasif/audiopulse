@@ -122,7 +122,7 @@ func (m Spotify) renderExport() string {
 			title.Render("Exporting…"),
 			"",
 			exportBar(p.Processed(), p.Total, innerW),
-			dim.Render(fmt.Sprintf("%d / %d   ·   %d skipped   ·   %d failed", p.Done, p.Total, p.Skipped, p.Failed)),
+			dim.Render(fmt.Sprintf("%d new · %d already had · %d not found  (of %d)", p.Done, p.Skipped, p.Failed, p.Total)),
 			faint.Render(truncate("now: "+p.Current, innerW)),
 			"",
 			faint.Render("Esc to cancel (downloaded files are kept)"),
@@ -142,11 +142,11 @@ func (m Spotify) renderExport() string {
 			lines = []string{
 				title.Render(head),
 				"",
-				dim.Render(fmt.Sprintf("%d downloaded · %d skipped · %d failed", p.Done, p.Skipped, p.Failed)),
+				dim.Render(fmt.Sprintf("%d new · %d already had · %d couldn't find", p.Done, p.Skipped, p.Failed)),
 				dim.Render(truncate("Saved to "+m.exportDir, innerW)),
 			}
 			if p.Failed > 0 {
-				lines = append(lines, faint.Render(truncate("Couldn't find: "+m.exportDir+"/_export-failures.txt", innerW)))
+				lines = append(lines, faint.Render(truncate("Not-found list: "+m.exportDir+"/_export-failures.txt", innerW)))
 			}
 		}
 		lines = append(lines, "", faint.Render("press any key to close"))
