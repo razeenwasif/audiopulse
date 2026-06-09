@@ -359,6 +359,60 @@ func TestEpisodeAutoPreview(t *testing.T) {
 	}
 }
 
+func TestLikeToggle(t *testing.T) {
+	m := sampleSpotify()
+	m.tracks[0].ID = "t1"
+	m.trackCursor = 0
+	m.focus = panelTracks
+
+	// L likes the selected track optimistically and issues the API call.
+	mm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	sp := mm.(Spotify)
+	if !sp.liked["t1"] {
+		t.Error("L should optimistically mark the track liked")
+	}
+	if cmd == nil {
+		t.Error("L should issue the like command")
+	}
+	if !strings.Contains(sp.status, "Saved") {
+		t.Errorf("status = %q, want a saved confirmation", sp.status)
+	}
+
+	// L again unlikes.
+	mm, _ = sp.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	if mm.(Spotify).liked["t1"] {
+		t.Error("a second L should unlike the track")
+	}
+
+	// A failed likeMsg reverts the optimistic state.
+	sp.liked["t1"] = true
+	mm, _ = sp.Update(likeMsg{id: "t1", liked: true, err: errors.New("boom")})
+	if mm.(Spotify).liked["t1"] {
+		t.Error("a failed like should revert the optimistic state")
+	}
+}
+
+func TestUnfollowShow(t *testing.T) {
+	m := sampleSpotify()
+	m.focus = panelPodcasts
+	m.podcastFocus = "shows"
+	m.shows = []spotify.Show{{ID: "s1", Name: "Daily"}}
+	m.showCursor = 0
+	m.currentShow = spotify.Show{ID: "s1"}
+
+	mm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("F")})
+	sp := mm.(Spotify)
+	if cmd == nil {
+		t.Error("F should issue an unfollow command")
+	}
+	if sp.currentShow.ID != "" {
+		t.Error("currentShow should be cleared so the list re-previews")
+	}
+	if !strings.Contains(sp.status, "Unfollowed") {
+		t.Errorf("status = %q, want an unfollow confirmation", sp.status)
+	}
+}
+
 func TestWrapText(t *testing.T) {
 	if got := wrapText("alpha beta gamma", 11); len(got) != 2 || got[0] != "alpha beta" || got[1] != "gamma" {
 		t.Errorf("wrapText word-wrap = %q, want [alpha beta gamma]", got)

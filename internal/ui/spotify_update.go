@@ -6,6 +6,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"audiopulse/internal/spotify"
 )
 
 const seekStep = 5 * time.Second
@@ -60,6 +62,14 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tracks = append(m.tracks, msg.page.Tracks...)
 		}
 		m.tracksTotal = msg.page.Total
+		// Everything in the Liked Songs source is, by definition, liked.
+		if msg.source.title == "Liked Songs" {
+			for _, t := range msg.page.Tracks {
+				if t.ID != "" {
+					m.liked[t.ID] = true
+				}
+			}
+		}
 		if msg.page.HasMore() && len(m.tracks) < maxTrackItems {
 			return m, m.loadTrackPageCmd(msg.item, msg.page.NextOffset(), msg.gen)
 		}
@@ -94,7 +104,7 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.vizTicking = true
 			cmds = append(cmds, m.vizTickCmd())
 		}
-		// Fetch lyrics when the track changes.
+		// Fetch lyrics and the ♥ saved-state when the track changes.
 		if m.state != nil && m.state.Track != nil && m.state.Track.ID != m.lyricsForID {
 			t := m.state.Track
 			m.lyricsForID = t.ID
@@ -102,7 +112,7 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.lyricsLines = nil
 			m.lyricsSynced = false
 			m.lyricsInstrumental = false
-			cmds = append(cmds, m.loadLyricsCmd(*t))
+			cmds = append(cmds, m.loadLyricsCmd(*t), m.checkSavedCmd(t.ID))
 		}
 		return m, tea.Batch(cmds...)
 
@@ -211,6 +221,20 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Playback action failed."
 		}
 		return m, m.pollCmd(true)
+
+	case likeMsg:
+		if msg.err != nil {
+			m.liked[msg.id] = !msg.liked // revert the optimistic toggle
+			m.err = msg.err
+			m.status = "Couldn't update Liked Songs."
+			return m, nil
+		}
+		m.liked[msg.id] = msg.liked
+		return m, nil
+
+	case savedCheckMsg:
+		m.liked[msg.id] = msg.saved
+		return m, nil
 
 	case deviceMsg:
 		if msg.id != "" {
@@ -380,6 +404,31 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "Added to queue."
 			m.queueDirty = true // reflect it in Up Next on the next poll
 			return m, cmd
+		}
+		return m, nil
+
+	case "L":
+		// Like/unlike the selected (or playing) track.
+		id, ok := m.likeTarget()
+		if !ok {
+			return m, nil
+		}
+		was := m.liked[id]
+		m.liked[id] = !was // optimistic
+		if was {
+			m.status = "Removed from Liked Songs."
+		} else {
+			m.status = "♥ Saved to Liked Songs."
+		}
+		return m, m.toggleLikeCmd(id, was)
+
+	case "F":
+		// Unfollow the highlighted show (the podcast list is your followed shows).
+		if m.focus == panelPodcasts && m.podcastFocus == "shows" && m.showCursor >= 0 && m.showCursor < len(m.shows) {
+			show := m.shows[m.showCursor]
+			m.status = "Unfollowed " + show.Name
+			m.currentShow = spotify.Show{} // re-preview after the list refreshes
+			return m, m.unfollowShowCmd(show)
 		}
 		return m, nil
 

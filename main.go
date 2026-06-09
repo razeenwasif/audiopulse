@@ -119,6 +119,14 @@ func runSpotify(cfg *config.Config) error {
 // connectSpotify builds an authorized client, re-authorizing once if a cached
 // token is no longer valid.
 func connectSpotify(ctx context.Context, clientID string) (*spotify.Client, string, error) {
+	// A new app version may request additional scopes (e.g. saving/following);
+	// re-authorize once to grant them before building the client.
+	if auth.NeedsReauthForScopes() {
+		fmt.Println("AudioPulse needs additional Spotify permissions — re-authorizing once…")
+		if _, err := auth.Authorize(ctx, clientID); err != nil {
+			return nil, "", err
+		}
+	}
 	httpClient, err := auth.HTTPClient(ctx, clientID)
 	if err != nil {
 		return nil, "", err

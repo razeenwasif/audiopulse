@@ -24,6 +24,7 @@ history.
 | [0009](0009-lyrics-via-lrclib.md)                | Lyrics via lrclib.net                    | Accepted |
 | [0010](0010-podcasts.md)                         | Podcasts (saved shows + episodes)       | Accepted |
 | [0011](0011-resilient-playback.md)               | Resilient playback (supervision+recovery)| Accepted |
+| [0012](0012-library-mutations.md)                | Library mutations (like/follow) + re-auth| Accepted |
 
 ## Statuses
 

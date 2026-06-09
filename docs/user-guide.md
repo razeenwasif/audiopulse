@@ -64,8 +64,9 @@ A complete tour of AudioPulse's interface and controls.
 **Controls:** `tab`/`shift+tab` cycle the focused panel (Library → Music → Podcasts → Lyrics);
 `↑↓`/`j`/`k` move; `enter` opens a library entry, plays the selected track, opens
 a show's episodes / plays an episode (Podcasts), or — on the Lyrics panel — opens
-the full-lyrics pane; `a` adds the selected track to the play queue; `esc` backs
-out of a show's episodes; `space` play/pause;
+the full-lyrics pane; `a` adds the selected track to the play queue; `L`
+likes/unlikes the selected or playing track (`♥`); `F` unfollows the highlighted
+show; `esc` backs out of a show's episodes; `space` play/pause;
 `n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R`
 loop-all/loop-one (repeat); `/` opens search; `?` shows all shortcuts; `q` quit. The shuffle and repeat glyphs turn
 **green** when active. (*Smart shuffle* has no Web API endpoint and can't be

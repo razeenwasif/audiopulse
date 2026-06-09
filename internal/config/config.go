@@ -31,6 +31,7 @@ var Scopes = []string{
 	"playlist-read-private",
 	"playlist-read-collaborative",
 	"user-library-read",
+	"user-library-modify", // like/unlike tracks, follow/unfollow shows
 	"user-read-playback-state",
 	"user-modify-playback-state",
 	"user-read-currently-playing",
@@ -64,6 +65,16 @@ func TokenPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "token.json"), nil
+}
+
+// ScopesPath is where the granted-scopes fingerprint is recorded, so a scope
+// change (a new app version) can force a one-time re-authorization.
+func ScopesPath() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "scopes"), nil
 }
 
 // LibrespotCacheDir is where librespot caches its credentials and audio.

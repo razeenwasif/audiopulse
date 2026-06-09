@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -83,12 +84,16 @@ type PlayerState struct {
 
 // Client is the AudioPulse Spotify wrapper.
 type Client struct {
-	api *zspotify.Client
+	api  *zspotify.Client
+	http *http.Client // authorized client, for endpoints zmb3 doesn't wrap
 }
 
 // New builds a Client from an authorized HTTP client (see internal/auth).
 func New(httpClient *http.Client) *Client {
-	return &Client{api: zspotify.New(httpClient, zspotify.WithRetry(true))}
+	return &Client{
+		api:  zspotify.New(httpClient, zspotify.WithRetry(true)),
+		http: httpClient,
+	}
 }
 
 // Me returns the current user's display name, doubling as a token validity check.
@@ -401,6 +406,54 @@ func (c *Client) PlayTracksAt(ctx context.Context, deviceID string, uris []zspot
 		opt.PlaybackOffset = &zspotify.PlaybackOffset{Position: &pos}
 	}
 	return c.api.PlayOpt(ctx, opt)
+}
+
+// --- library (save / follow) -------------------------------------------------
+
+// LikeTrack saves a track to the user's Liked Songs.
+func (c *Client) LikeTrack(ctx context.Context, id zspotify.ID) error {
+	return c.api.AddTracksToLibrary(ctx, id)
+}
+
+// UnlikeTrack removes a track from the user's Liked Songs.
+func (c *Client) UnlikeTrack(ctx context.Context, id zspotify.ID) error {
+	return c.api.RemoveTracksFromLibrary(ctx, id)
+}
+
+// TrackSaved reports whether a track is in the user's Liked Songs.
+func (c *Client) TrackSaved(ctx context.Context, id zspotify.ID) (bool, error) {
+	res, err := c.api.UserHasTracks(ctx, id)
+	if err != nil || len(res) == 0 {
+		return false, err
+	}
+	return res[0], nil
+}
+
+// FollowShow saves a podcast to the user's library.
+func (c *Client) FollowShow(ctx context.Context, id zspotify.ID) error {
+	return c.api.SaveShowsForCurrentUser(ctx, []zspotify.ID{id})
+}
+
+// UnfollowShow removes a saved podcast. zmb3 v2 has no remove-shows method, so
+// this calls the endpoint directly via the authorized HTTP client.
+func (c *Client) UnfollowShow(ctx context.Context, id zspotify.ID) error {
+	return c.deleteRaw(ctx, "me/shows?ids="+url.QueryEscape(string(id)))
+}
+
+func (c *Client) deleteRaw(ctx context.Context, path string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, "https://api.spotify.com/v1/"+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("spotify: DELETE %s returned %s", path, resp.Status)
+	}
+	return nil
 }
 
 // AddToQueue queues a track to play after the current one, on the given device.

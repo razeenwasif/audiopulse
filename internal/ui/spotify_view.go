@@ -82,6 +82,8 @@ func (m Spotify) renderCheatsheet() string {
 		{"g / G", "jump to top / bottom"},
 		{"enter", "open playlist/show · play track/episode · expand lyrics"},
 		{"a", "add the selected track to the queue"},
+		{"L", "like / unlike the selected or playing track"},
+		{"F", "unfollow the highlighted podcast"},
 		{"space / p", "play / pause"},
 		{"n / b", "next / previous"},
 		{"← → / h l", "seek backward / forward"},
@@ -855,7 +857,11 @@ func (m Spotify) renderNowPlaying(outerHeight int) string {
 
 	if m.state != nil && m.state.Track != nil {
 		t := m.state.Track
-		b.WriteString(m.st.nowTitle.Render(truncate(t.Title, tw)))
+		title := t.Title
+		if m.liked[t.ID] {
+			title = "♥ " + title
+		}
+		b.WriteString(m.st.nowTitle.Render(truncate(title, tw)))
 		b.WriteString("\n")
 		b.WriteString(m.st.nowArtist.Render(truncate(t.Artist, tw)))
 		b.WriteString("\n")

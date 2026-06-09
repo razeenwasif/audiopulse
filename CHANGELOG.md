@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Like / unlike** — press `L` to save or remove the selected (or playing) track
+  in your Liked Songs; the now-playing panel shows a `♥` when the current track is
+  saved. **Unfollow** — press `F` on a highlighted show to unfollow it (the list
+  refreshes). These use a new `user-library-modify` scope, so AudioPulse
+  re-authorizes **once** on first launch after updating
+  ([ADR-0012](docs/adr/0012-library-mutations.md)).
 - **Keybinding cheatsheet** — press `?` for a floating overlay listing every
   shortcut (the bottom help line is truncated on narrow terminals). Any key closes.
 - **Episode preview** — in the Podcasts pane, a show's episodes now load into the

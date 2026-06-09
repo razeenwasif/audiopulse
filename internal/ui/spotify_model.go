@@ -111,6 +111,11 @@ type Spotify struct {
 	ticksSinceQueue int
 	lastTrackID     zspotify.ID // detects track changes to refresh the queue
 
+	// liked caches which track ids are in Liked Songs (for the ♥ indicator and
+	// toggle logic); not exhaustive — filled from the playing track, the Liked
+	// Songs list, and like/unlike actions.
+	liked map[zspotify.ID]bool
+
 	// Shuffle/repeat are tracked locally and start off. The Web API doesn't
 	// reliably report these for a librespot device, so seeding from it flipped the
 	// glyphs the wrong way — the user's keypresses are the single source of truth.
@@ -181,6 +186,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		podcastFocus: "shows",
 		showsLoading: true, // Init fetches saved shows up front
 		queueDirty:   true, // fetch the up-next queue on the first tick
+		liked:        make(map[zspotify.ID]bool),
 		status:       "Loading your library…",
 	}
 }
@@ -248,6 +254,15 @@ type episodeDebounceMsg struct {
 }
 type actionMsg struct{ err error }
 type deviceMsg struct{ id string } // recovered librespot device id ("" = not found)
+type likeMsg struct {
+	id    zspotify.ID
+	liked bool // intended new state
+	err   error
+}
+type savedCheckMsg struct {
+	id    zspotify.ID
+	saved bool
+}
 type searchDebounceMsg struct{ gen int }
 type spotlightResultsMsg struct {
 	gen    int
@@ -721,6 +736,64 @@ func (m Spotify) queueSelectedCmd() tea.Cmd {
 	id := m.tracks[m.trackCursor].ID
 	deviceID := m.deviceID
 	return m.action(func(ctx context.Context) error { return client.AddToQueue(ctx, id, deviceID) })
+}
+
+// toggleLikeCmd saves or removes a track in Liked Songs (opposite of wasLiked).
+func (m Spotify) toggleLikeCmd(id zspotify.ID, wasLiked bool) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		var err error
+		if wasLiked {
+			err = client.UnlikeTrack(ctx, id)
+		} else {
+			err = client.LikeTrack(ctx, id)
+		}
+		return likeMsg{id: id, liked: !wasLiked, err: err}
+	}
+}
+
+// checkSavedCmd looks up whether a track is in Liked Songs (for the ♥ state).
+func (m Spotify) checkSavedCmd(id zspotify.ID) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		saved, err := client.TrackSaved(ctx, id)
+		if err != nil {
+			return nil
+		}
+		return savedCheckMsg{id: id, saved: saved}
+	}
+}
+
+// unfollowShowCmd unfollows a saved podcast, then reloads the show list.
+func (m Spotify) unfollowShowCmd(show spotify.Show) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		if err := client.UnfollowShow(ctx, show.ID); err != nil {
+			return actionMsg{err: err}
+		}
+		shows, err := client.SavedShows(ctx)
+		return showsMsg{shows: shows, err: err}
+	}
+}
+
+// likeTarget is the track a like action applies to: the selected music track if
+// the music pane is focused, else the currently playing track.
+func (m Spotify) likeTarget() (zspotify.ID, bool) {
+	if m.focus == panelTracks && m.trackCursor >= 0 && m.trackCursor < len(m.tracks) {
+		if id := m.tracks[m.trackCursor].ID; id != "" {
+			return id, true
+		}
+	}
+	if m.state != nil && m.state.Track != nil && m.state.Track.ID != "" {
+		return m.state.Track.ID, true
+	}
+	return "", false
 }
 
 // action wraps a player control call into a command.

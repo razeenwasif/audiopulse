@@ -21,6 +21,8 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
+	"strings"
 
 	"golang.org/x/oauth2"
 
@@ -73,6 +75,37 @@ func saveToken(t *oauth2.Token) error {
 func HasToken() bool {
 	t, err := loadToken()
 	return err == nil && t.RefreshToken != ""
+}
+
+// scopeFingerprint is a stable representation of the currently-requested scopes.
+func scopeFingerprint() string {
+	s := append([]string(nil), config.Scopes...)
+	sort.Strings(s)
+	return strings.Join(s, " ")
+}
+
+func writeScopeFingerprint() {
+	if p, err := config.ScopesPath(); err == nil {
+		_ = os.WriteFile(p, []byte(scopeFingerprint()), 0o600)
+	}
+}
+
+// NeedsReauthForScopes reports whether a cached token was granted with a
+// different (older) set of scopes than the app now requests, so the caller can
+// re-authorize once to pick up newly added permissions.
+func NeedsReauthForScopes() bool {
+	if !HasToken() {
+		return false // no token yet → the first Authorize already uses current scopes
+	}
+	p, err := config.ScopesPath()
+	if err != nil {
+		return false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return true // token predates scope tracking → re-auth to be safe
+	}
+	return string(b) != scopeFingerprint()
 }
 
 // persistingSource re-saves the token whenever it is refreshed.
@@ -171,6 +204,7 @@ func Authorize(ctx context.Context, clientID string) (*oauth2.Token, error) {
 		if err := saveToken(tok); err != nil {
 			return nil, fmt.Errorf("saving token: %w", err)
 		}
+		writeScopeFingerprint() // record what we were granted
 		fmt.Println("Connected to Spotify ✓")
 		return tok, nil
 	}
