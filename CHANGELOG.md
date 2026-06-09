@@ -69,6 +69,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failed + current track). Install with `make spotdl` (checked by `make doctor`);
   destination is the `music_dir` config setting (default `~/Music/audiopulse`,
   point it at a drive). Podcasts aren't included — spotDL can't do them.
+  The exporter writes `_export.log` (raw spotDL output) and `_export-failures.txt`
+  (every track it couldn't find — mostly Spotify-exclusive Singles/Sessions/Live
+  recordings, which simply aren't on YouTube) into the music dir, and a **stall
+  watchdog** kills a batch that goes silent for 3 min (a throttled/hung download)
+  so it can't freeze the whole run — those tracks are retried on the next run.
 - **Like / unlike** — press `L` to save or remove the selected (or playing) track
   in your Liked Songs; the now-playing panel shows a `♥` when the current track is
   saved. **Unfollow** — press `F` on a highlighted show to unfollow it (the list

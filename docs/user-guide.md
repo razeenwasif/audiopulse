@@ -77,9 +77,14 @@ playlists** to local audio files via [spotDL](https://github.com/spotDL/spotify-
 (how many tracks, and the destination from your `music_dir` config — default
 `~/Music/audiopulse`), then runs a background job you can watch and cancel. It's
 **resumable** — rerun `e` later and spotDL skips files you already have. Audio is
-matched from YouTube (lossy; a few may mismatch — the summary lists failures).
-**Podcasts are not included** (spotDL can't download them; that needs the
-podcast/RSS route). The shuffle and repeat glyphs turn
+matched from YouTube (lossy; a few may mismatch). Two files are written into the
+music dir: **`_export.log`** (raw spotDL output, for diagnosis) and
+**`_export-failures.txt`** — the list of tracks that couldn't be found, which is
+mostly **Spotify-exclusive recordings** (Singles / Sessions / Live versions) and
+odd-titled uploads that simply aren't on YouTube; source those elsewhere if you
+want them. A stalled (throttled) batch is auto-killed after 3 minutes and its
+tracks retried on the next run. **Podcasts are not included** (spotDL can't
+download them; that needs the podcast/RSS route). The shuffle and repeat glyphs turn
 **green** when active. (*Smart shuffle* has no Web API endpoint and can't be
 toggled here; pressing `S` says so.) **Mouse:** wheel scrolls the panel under the
 pointer; click a library entry to open it; click a track to play it; click the

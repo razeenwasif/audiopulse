@@ -145,6 +145,9 @@ func (m Spotify) renderExport() string {
 				dim.Render(fmt.Sprintf("%d downloaded · %d skipped · %d failed", p.Done, p.Skipped, p.Failed)),
 				dim.Render(truncate("Saved to "+m.exportDir, innerW)),
 			}
+			if p.Failed > 0 {
+				lines = append(lines, faint.Render(truncate("Couldn't find: "+m.exportDir+"/_export-failures.txt", innerW)))
+			}
 		}
 		lines = append(lines, "", faint.Render("press any key to close"))
 	}

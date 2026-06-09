@@ -1,6 +1,11 @@
 package downloader
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestApplyLineCounts(t *testing.T) {
 	var p Progress
@@ -34,5 +39,32 @@ func TestApplyLineCurrent(t *testing.T) {
 	applyLine(&p, `Downloaded "M83 - Midnight City": https://x`)
 	if p.Current != "M83 - Midnight City" {
 		t.Errorf("current = %q, want the downloaded title", p.Current)
+	}
+}
+
+func TestFailureName(t *testing.T) {
+	got := failureName("LookupError: No results found for song: Hp Boyz - SATIVA - Spotify Singles")
+	if got != "Hp Boyz - SATIVA - Spotify Singles" {
+		t.Errorf("failureName = %q, want the song name", got)
+	}
+	if got := failureName("Error: weird"); got != "Error: weird" {
+		t.Errorf("fallback failureName = %q", got)
+	}
+}
+
+func TestWriteFailures(t *testing.T) {
+	dir := t.TempDir()
+	writeFailures(dir, []string{"A - B", "C - D"})
+	b, err := os.ReadFile(filepath.Join(dir, reportName))
+	if err != nil {
+		t.Fatalf("report not written: %v", err)
+	}
+	if s := string(b); !strings.Contains(s, "A - B") || !strings.Contains(s, "C - D") {
+		t.Errorf("report missing entries:\n%s", s)
+	}
+	// No failures → the report is removed.
+	writeFailures(dir, nil)
+	if _, err := os.Stat(filepath.Join(dir, reportName)); !os.IsNotExist(err) {
+		t.Error("empty failures should remove a stale report")
 	}
 }
