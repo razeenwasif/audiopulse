@@ -144,6 +144,8 @@ perf work.
 
 ## Known open items / possible next steps
 
+- **AI agent (backlog — wanted).** Hook in a **local LLM via Ollama** (user has Gemma variants; Ollama = local HTTP at `:11434`, call from Go, no SDK). **No fine-tuning** — use **prompt + tool/function calling + RAG** over the (soon local) library metadata. Three use cases, all desired: (1) **natural-language control** ("play X", "queue more like this", "skip") → constrain output to **JSON** action (`format: json` — Gemma's tool-calling is shaky on small variants) mapped to existing commands; (2) **recommender/DJ** → RAG over the library picks tracks; (3) **chat/Q&A** sidebar. New `internal/agent` package + a UI hook (reuse the Spotlight overlay pattern). Pairs well with Phase B (offline, no API). Fine-tune only if a specific repeatable failure can't be fixed with prompt/schema/few-shot.
+- **Export hardening (needed — `e` stalls on big batches).** spotDL itself works (a single track downloads in <90s; the `Downloaded "..."` parser is correct), but a 75-URI batch stalled at 0 files (YouTube/yt-dlp **throttling**) and the app **swallows spotDL output** (no log) so stalls are invisible. Fix: (a) tee spotDL output to a log file; (b) **small/per-track batches with a per-track timeout** so one hung track is skipped, not blocking; (c) tune `--threads`; (d) surface a "stalled?" hint.
 - Cover-art **card carousels** in the center feed (Spotify "Jump back in") — deferred; rendering many thumbnails per frame is heavy. A few cached small thumbs could work.
 - Make **shuffle/repeat clickable** in the player bar (mouse).
 - **256-color fallback** for album art (truecolor assumed today).
