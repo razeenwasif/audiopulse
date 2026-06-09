@@ -4,7 +4,7 @@ BINARY := audiopulse
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall librespot
+.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall librespot spotdl
 
 ## build: compile with real audio (needs libasound2-dev)
 build:
@@ -37,6 +37,11 @@ fmt:
 ## librespot: build & install the librespot playback backend (one-time, ~10-15 min)
 librespot:
 	cargo install librespot --locked --no-default-features --features "alsa-backend,rustls-tls-webpki-roots"
+
+## spotdl: install spotDL (used to export your library to local audio files)
+spotdl:
+	@command -v pipx >/dev/null 2>&1 && pipx install spotdl || pip install --user spotdl
+	@echo "spotDL installed. FFmpeg is required for conversion (system ffmpeg is used if present)."
 
 ## doctor: check the toolchain and audio stack
 doctor:

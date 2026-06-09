@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -43,6 +44,33 @@ var Scopes = []string{
 // Config holds user-provided settings.
 type Config struct {
 	ClientID string `json:"client_id"`
+	// MusicDir is where the local library / downloads live. Empty → the default
+	// ~/Music/audiopulse. Set it (e.g. "/mnt/e/Music") to use another drive.
+	MusicDir string `json:"music_dir,omitempty"`
+}
+
+// MusicPath resolves the music library directory (expanding a leading ~) and
+// creates it. Defaults to ~/Music/audiopulse when unset.
+func (c *Config) MusicPath() (string, error) {
+	dir := c.MusicDir
+	switch {
+	case dir == "":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, "Music", "audiopulse")
+	case strings.HasPrefix(dir, "~/"):
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, dir[2:])
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 // Dir returns ~/.config/audiopulse, creating it (0700) if needed.

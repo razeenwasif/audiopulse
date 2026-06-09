@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Library export foundation (spotDL)** — `make spotdl` installs the exporter,
+  `make doctor` checks spotdl/ffmpeg, and a `music_dir` config setting chooses
+  where downloads land (default `~/Music/audiopulse`). New `internal/downloader`
+  drives spotDL over your track URIs in batches with aggregate, resumable progress.
+  The in-app "export my library" action is wired up next.
 - **Like / unlike** — press `L` to save or remove the selected (or playing) track
   in your Liked Songs; the now-playing panel shows a `♥` when the current track is
   saved. **Unfollow** — press `F` on a highlighted show to unfollow it (the list

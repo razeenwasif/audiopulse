@@ -45,6 +45,25 @@ The following are adjustable while the app runs and reset on restart:
 | Autoplay  | `a`              | on      |
 | Search    | type + `Enter`   | —       |
 
+## Library export (spotDL)
+
+AudioPulse can export your Spotify library to local audio files using
+[spotDL](https://github.com/spotDL/spotify-downloader) (install with `make spotdl`;
+needs Python + FFmpeg — `make doctor` checks both). Downloads go to the **music
+directory**, set in `~/.config/audiopulse/config.json`:
+
+```json
+{ "client_id": "…", "music_dir": "/mnt/e/Music/audiopulse" }
+```
+
+- Default (when unset): `~/Music/audiopulse`. A leading `~/` is expanded.
+- On WSL, point it at a mounted drive (e.g. `/mnt/d/Music`) to keep the library
+  off the WSL virtual disk. Drive speed doesn't affect playback or export — only
+  the initial library scan, where an SSD helps.
+
+spotDL sources audio from YouTube (lossy; occasional mismatches) and skips files
+that already exist, so an interrupted export is resumable.
+
 ## Environment variables
 
 AudioPulse itself reads no custom environment variables. The variables that

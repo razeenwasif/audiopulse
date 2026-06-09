@@ -104,6 +104,19 @@ else
   note "Not signed in to Spotify yet — first run opens a browser"
 fi
 
+# --- Library export (optional, spotDL) ---------------------------------------
+printf '\nLibrary export (optional — download to local files)\n'
+if command -v spotdl >/dev/null 2>&1; then
+  ok "spotdl installed"
+else
+  note "spotdl not installed — run 'make spotdl' to export your library to local audio"
+fi
+if command -v ffmpeg >/dev/null 2>&1; then
+  ok "ffmpeg installed (audio conversion)"
+else
+  note "ffmpeg not found — spotDL needs it to convert audio (install ffmpeg, or 'spotdl --download-ffmpeg')"
+fi
+
 # --- Summary -----------------------------------------------------------------
 printf '\n\033[1mSummary:\033[0m %d ok, %d warning(s), %d failure(s)\n\n' "$pass" "$warn" "$fail"
 [ "$fail" -eq 0 ]
