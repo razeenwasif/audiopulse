@@ -124,7 +124,16 @@ make voice        # downloads libvosk + a small English model, builds with -tags
 
 `make voice` fetches `libvosk.so` + the model into `third_party/vosk/`
 (gitignored, ~50 MB) and links them with an embedded rpath, so no
-`LD_LIBRARY_PATH` is needed. Tune it in `~/.config/audiopulse/config.json`:
+`LD_LIBRARY_PATH` is needed.
+
+To **install** a voice-enabled binary on your `PATH` (so you can run `audiopulse`
+from anywhere), use `make install-voice` (builds with `-tags vosk` and installs
+to `~/.local/bin`). Note: when launched **outside the repo**, set `voice_model`
+to an **absolute** path (the embedded libvosk rpath and the model both live under
+the repo's `third_party/vosk/`, so the repo must stay put). Everything else
+(Spotify, the RAG index) uses the absolute config dir and works from anywhere.
+
+Tune voice in `~/.config/audiopulse/config.json`:
 
 ```json
 { "client_id": "…", "voice_model": "third_party/vosk/model", "voice_source": "default" }

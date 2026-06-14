@@ -89,6 +89,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   automatically on first use behind a progress overlay; say *"reindex my library"*
   to rebuild after big changes. New `ollama_embed_model` config (default
   `nomic-embed-text`) ([ADR-0015](docs/adr/0015-library-rag.md)).
+- **`make install-voice`** — build with voice control + RAG (`-tags vosk`) and
+  install to `~/.local/bin` so `audiopulse` runs from anywhere (set an absolute
+  `voice_model` for `v` when launching outside the repo).
 - **Voice control (offline, press `v`)** — speak your commands. A microphone
   capture (ffmpeg → PulseAudio) is transcribed by a **local** [Vosk](https://alphacephei.com/vosk/)
   model and the text is fed into the same assistant pipeline as `:` — so *"play

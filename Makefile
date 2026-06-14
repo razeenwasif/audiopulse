@@ -4,7 +4,7 @@ BINARY := audiopulse
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall librespot spotdl ollama-model voice run-voice
+.PHONY: build run silent run-silent test vet fmt clean doctor install install-voice uninstall librespot spotdl ollama-model voice run-voice
 
 ## build: compile with real audio (needs libasound2-dev)
 build:
@@ -68,6 +68,19 @@ install: build
 	@mkdir -p "$(BINDIR)"
 	@install -m 0755 $(BINARY) "$(BINDIR)/$(BINARY)"
 	@echo "Installed $(BINARY) -> $(BINDIR)/$(BINARY)"
+	@case ":$$PATH:" in \
+		*":$(BINDIR):"*) echo "$(BINDIR) is on your PATH — run 'audiopulse' from anywhere." ;; \
+		*) echo "NOTE: $(BINDIR) is not on your PATH. Add it, e.g.:"; \
+		   echo "      echo 'export PATH=\"$(BINDIR):\$$PATH\"' >> ~/.bashrc && source ~/.bashrc" ;; \
+	esac
+
+## install-voice: build with voice control (-tags vosk) and install to $(BINDIR)
+install-voice: voice
+	@mkdir -p "$(BINDIR)"
+	@install -m 0755 $(BINARY) "$(BINDIR)/$(BINARY)"
+	@echo "Installed $(BINARY) (voice+RAG) -> $(BINDIR)/$(BINARY)"
+	@echo "Voice ('v') needs voice_model set to an absolute path in config.json when"
+	@echo "launched outside the repo — e.g. \"$(CURDIR)/third_party/vosk/model\"."
 	@case ":$$PATH:" in \
 		*":$(BINDIR):"*) echo "$(BINDIR) is on your PATH — run 'audiopulse' from anywhere." ;; \
 		*) echo "NOTE: $(BINDIR) is not on your PATH. Add it, e.g.:"; \
