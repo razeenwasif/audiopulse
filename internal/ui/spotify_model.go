@@ -178,9 +178,11 @@ type Spotify struct {
 	// its model lazily on first use and is reused; a spoken phrase is transcribed
 	// and fed into the same assistant pipeline as a typed request.
 	voiceEngine    *voice.Engine
-	voiceListening bool
-	voiceModel     string // config path; empty → package default
-	voiceSource    string // PulseAudio source; empty → "default"
+	voiceListening bool              // a capture is in progress (starting or live)
+	voiceReady     bool              // capture is live — ok to speak
+	voiceCh        <-chan voiceEvent // events from the active capture
+	voiceModel     string            // config path; empty → package default
+	voiceSource    string            // PulseAudio source; empty → "default"
 
 	focus  spotifyPanel
 	status string
@@ -343,13 +345,18 @@ type agentPlayMsg struct {
 	err    error
 }
 
-// voiceMsg delivers a transcribed spoken request (and the opened engine, so it
-// is reused across calls).
-type voiceMsg struct {
+// voiceEvent is one step of a voice capture: a ready signal (mic live) or a
+// final result (transcript / error). The opened engine is carried back so it is
+// reused across calls.
+type voiceEvent struct {
+	ready  bool
 	engine *voice.Engine
 	text   string
 	err    error
 }
+
+// voiceMsg delivers a voiceEvent into the Bubble Tea update loop.
+type voiceMsg voiceEvent
 
 // --- commands ---------------------------------------------------------------
 
@@ -920,24 +927,39 @@ func (m Spotify) agentPlayCmd(query string) tea.Cmd {
 	}
 }
 
-// listenCmd opens the voice engine (loading the model on first use) and captures
-// a single spoken phrase, returning the transcript.
-func (m Spotify) listenCmd() tea.Cmd {
-	eng := m.voiceEngine
-	modelPath := m.voiceModel
-	source := m.voiceSource
-	return func() tea.Msg {
+// startVoice opens the engine (loading the model on first use) and captures one
+// spoken phrase on a background goroutine, emitting events on the returned
+// channel: a ready event the moment the mic is actually live (so the UI shows
+// "Listening…" only then — avoiding ffmpeg's startup gap that would clip the
+// first word), then a final event with the transcript or error.
+func startVoice(eng *voice.Engine, modelPath, source string) <-chan voiceEvent {
+	ch := make(chan voiceEvent, 2)
+	go func() {
+		defer close(ch)
 		if eng == nil {
 			e, err := voice.Open(modelPath, source)
 			if err != nil {
-				return voiceMsg{err: err}
+				ch <- voiceEvent{err: err}
+				return
 			}
 			eng = e
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		text, err := eng.Listen(ctx)
-		return voiceMsg{engine: eng, text: text, err: err}
+		text, err := eng.Listen(ctx, func() { ch <- voiceEvent{ready: true, engine: eng} })
+		ch <- voiceEvent{engine: eng, text: text, err: err}
+	}()
+	return ch
+}
+
+// waitVoiceCmd blocks for the next voice event from the channel.
+func waitVoiceCmd(ch <-chan voiceEvent) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return voiceMsg{} // closed without a result
+		}
+		return voiceMsg(ev)
 	}
 }
 

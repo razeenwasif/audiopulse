@@ -73,7 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   capture (ffmpeg → PulseAudio) is transcribed by a **local** [Vosk](https://alphacephei.com/vosk/)
   model and the text is fed into the same assistant pipeline as `:` — so *"play
   bohemian rhapsody"*, *"shuffle on"*, or *"skip"* work spoken or typed. Press
-  `v`, speak, and it stops automatically when you pause (Vosk endpoint detection —
+  `v`, **wait for the green "Listening…" cue** (it shows "Starting mic…" until
+  capture is actually live, so the mic's ~1 s startup can't clip your first word —
+  the reason short commands like "pause"/"skip" were getting dropped), then speak;
+  it finalizes ~0.6 s after you stop (transcript-stability endpoint, since
   terminals can't do hold-to-talk). Fully offline, no Python, no API. It's an
   **opt-in build**: `make voice` downloads the Vosk library + a small English
   model (gitignored, ~50 MB) into `third_party/vosk/` and builds with `-tags

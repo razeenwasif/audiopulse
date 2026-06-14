@@ -292,10 +292,18 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.runAgentCommand(msg.cmd)
 
 	case voiceMsg:
-		m.voiceListening = false
 		if msg.engine != nil {
 			m.voiceEngine = msg.engine
 		}
+		// Mic is live now — show the cue and keep waiting for the transcript, so
+		// the user only speaks once capture has actually started.
+		if msg.ready {
+			m.voiceReady = true
+			m.status = "🎙 Listening… speak now"
+			return m, waitVoiceCmd(m.voiceCh)
+		}
+		m.voiceListening = false
+		m.voiceReady = false
 		if msg.err != nil {
 			m.err = msg.err
 			m.status = "Voice: " + truncateErr(msg.err)
@@ -540,8 +548,10 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.voiceListening = true
-		m.status = "🎙 Listening… speak now"
-		return m, m.listenCmd()
+		m.voiceReady = false
+		m.status = "🎙 Starting mic…"
+		m.voiceCh = startVoice(m.voiceEngine, m.voiceModel, m.voiceSource)
+		return m, waitVoiceCmd(m.voiceCh)
 
 	case "tab":
 		return m, m.focusPanel(m.nextPanel(m.focus))

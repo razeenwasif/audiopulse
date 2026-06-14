@@ -327,11 +327,20 @@ func (m Spotify) renderAgentPrompt() string {
 	return solidify(box, spotlightBGCode)
 }
 
-// renderListening builds the small floating "🎙 Listening…" indicator shown
-// while voice capture is running.
+// renderListening builds the small floating voice-capture indicator. It shows
+// "Starting mic…" until capture is live, then "Listening…" — so the user waits
+// for the live cue and doesn't lose the first word to ffmpeg's startup gap.
 func (m Spotify) renderListening() string {
-	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("🎙  Listening…")
-	hint := lipgloss.NewStyle().Foreground(colorFaint).Render("speak your request — it stops when you pause")
+	titleText, hintText := "🎙  Starting mic…", "one moment — wait for the green cue before speaking"
+	if m.voiceReady {
+		titleText, hintText = "🎙  Listening…", "speak your request — it stops when you pause"
+	}
+	titleColor := colorMuted
+	if m.voiceReady {
+		titleColor = colorAccentHi
+	}
+	title := lipgloss.NewStyle().Foreground(titleColor).Bold(true).Render(titleText)
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render(hintText)
 	body := lipgloss.JoinVertical(lipgloss.Center, title, "", hint)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).

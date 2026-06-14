@@ -32,8 +32,13 @@ import (
 const (
 	// sampleRate is what the small Vosk models expect; we resample to it.
 	sampleRate = 16000
-	// captureTimeout bounds one Listen call so a silent mic can't hang it.
+	// captureTimeout is a hard cap on one Listen call (safety net).
 	captureTimeout = 12 * time.Second
+	// noSpeechTimeout ends capture early when nothing is said after it goes live.
+	noSpeechTimeout = 6 * time.Second
+	// silenceHold is how long the transcript must stop changing, after speech,
+	// before we finalize — our own fast endpoint so we don't wait on Vosk's.
+	silenceHold = 600 * time.Millisecond
 	// defaultModelPath is where `make voice` puts the model (relative to the repo).
 	defaultModelPath = "third_party/vosk/model"
 )
@@ -108,6 +113,11 @@ func (r *recognizer) accept(buf []byte) (endpoint bool, text string) {
 	return false, ""
 }
 
+// partial returns the in-progress transcript (before an endpoint).
+func (r *recognizer) partial() string {
+	return parseField(C.GoString(C.vosk_recognizer_partial_result(r.rec)), "partial")
+}
+
 // final returns the recognized text accumulated so far (flushes the recognizer).
 func (r *recognizer) final() string {
 	return parseField(C.GoString(C.vosk_recognizer_final_result(r.rec)), "text")
@@ -124,10 +134,14 @@ func parseField(jsonStr, key string) string {
 	return ""
 }
 
-// Listen captures from the microphone until you stop speaking (Vosk endpoint),
-// ctx is canceled, or captureTimeout elapses, and returns the transcript. An
-// empty string (no error) means nothing intelligible was heard.
-func (e *Engine) Listen(ctx context.Context) (string, error) {
+// Listen captures from the microphone and returns the transcript once you stop
+// speaking. onReady (if non-nil) is invoked the moment capture is actually live
+// — the caller shows its "listening" cue then, so the user never speaks into
+// ffmpeg's ~1 s startup gap and loses the first word. Capture ends on a short
+// post-speech silence (silenceHold), or returns "" if nothing is said within
+// noSpeechTimeout (both bounded by captureTimeout). An empty string (no error)
+// means nothing intelligible was heard.
+func (e *Engine) Listen(ctx context.Context, onReady func()) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, captureTimeout)
 	defer cancel()
 
@@ -153,12 +167,42 @@ func (e *Engine) Listen(ctx context.Context) (string, error) {
 	defer rec.free()
 
 	buf := make([]byte, 3200) // ~100 ms at 16 kHz s16le mono
+	var (
+		live        time.Time // when capture went live (first bytes)
+		notified    bool
+		lastPartial string
+		stableSince time.Time
+		heardSpeech bool
+	)
 	for {
 		n, rerr := stdout.Read(buf)
+		now := time.Now()
 		if n > 0 {
-			if endpoint, text := rec.accept(buf[:n]); endpoint && text != "" {
-				return text, nil
+			if !notified { // capture is live now — safe for the user to speak
+				notified = true
+				live = now
+				if onReady != nil {
+					onReady()
+				}
 			}
+			if endpoint, text := rec.accept(buf[:n]); endpoint && text != "" {
+				return text, nil // Vosk's own endpoint fired
+			}
+			// Our own endpoint: once the partial transcript stops growing for
+			// silenceHold after speech began, finalize — much snappier than
+			// waiting on Vosk's internal silence detection.
+			if partial := rec.partial(); partial != "" {
+				if partial != lastPartial {
+					lastPartial, stableSince, heardSpeech = partial, now, true
+				} else if heardSpeech && now.Sub(stableSince) >= silenceHold {
+					if t := rec.final(); t != "" {
+						return t, nil
+					}
+				}
+			}
+		}
+		if notified && !heardSpeech && now.Sub(live) >= noSpeechTimeout {
+			return "", nil // live but nothing said — give up early
 		}
 		if rerr != nil || ctx.Err() != nil {
 			break

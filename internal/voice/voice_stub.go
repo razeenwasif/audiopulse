@@ -28,4 +28,6 @@ func Open(modelPath, source string) (*Engine, error) { return nil, ErrUnsupporte
 func (e *Engine) Close() error { return nil }
 
 // Listen always fails in the stub build.
-func (e *Engine) Listen(ctx context.Context) (string, error) { return "", ErrUnsupportedBuild }
+func (e *Engine) Listen(ctx context.Context, onReady func()) (string, error) {
+	return "", ErrUnsupportedBuild
+}
