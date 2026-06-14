@@ -77,6 +77,14 @@ func (m Spotify) View() string {
 		out = overlay(out, box, max0(x), max0(y))
 	}
 
+	// Float the library-indexing progress while a build is running.
+	if m.idxState == "building" {
+		box := m.renderIndexing()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
 	// Float the full-lyrics pane, centered.
 	if m.lyricsModal {
 		box := m.renderLyricsModal()
@@ -213,7 +221,7 @@ func (m Spotify) renderCheatsheet() string {
 		{"s", "shuffle"},
 		{"r / R", "loop all / loop one"},
 		{"/", "search (Spotlight)"},
-		{":", "ask the AI assistant (local Ollama/Gemma)"},
+		{":", "AI assistant — control · recommend (RAG over your library)"},
 		{"v", "speak a request (voice control, offline Vosk)"},
 		{"esc", "back · close overlay"},
 		{"?", "toggle this help"},
@@ -314,7 +322,7 @@ func (m Spotify) renderAgentPrompt() string {
 	case m.agentErr != nil:
 		status = lipgloss.NewStyle().Foreground(colorErr).Render(truncate(m.agentErr.Error(), innerW))
 	default:
-		status = faint.Render("Ask in plain words: play a song · shuffle/repeat · skip · pause · volume")
+		status = faint.Render("play a song · recommend something like X · shuffle/skip/pause · volume")
 	}
 	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Ask AI  (local Ollama)")
 	hint := faint.Render("↵ send    esc close")
@@ -324,6 +332,36 @@ func (m Spotify) renderAgentPrompt() string {
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
 		Padding(1, 2).Width(boxW).
 		Render(body)
+	return solidify(box, spotlightBGCode)
+}
+
+// renderIndexing builds the floating progress box shown while the library RAG
+// index is being built (one-time, then cached).
+func (m Spotify) renderIndexing() string {
+	boxW := clamp(m.width*3/5, 44, 72)
+	innerW := boxW - 4
+	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Indexing your library")
+	dim := lipgloss.NewStyle().Foreground(colorMuted)
+	faint := lipgloss.NewStyle().Foreground(colorFaint)
+
+	done, total := m.idxProg[0], m.idxProg[1]
+	var lines []string
+	if total == 0 {
+		lines = []string{title, "", dim.Render("Gathering your playlists + Liked Songs…")}
+	} else {
+		lines = []string{
+			title,
+			"",
+			exportBar(done, total, innerW),
+			dim.Render(fmt.Sprintf("Embedding tracks  %d / %d", done, total)),
+		}
+	}
+	lines = append(lines, "", faint.Render("Local & one-time — recommendations resume automatically."))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return solidify(box, spotlightBGCode)
 }
 

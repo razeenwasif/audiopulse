@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"audiopulse/internal/agent"
+	"audiopulse/internal/config"
 	"audiopulse/internal/downloader"
 	"audiopulse/internal/spotify"
 	"audiopulse/internal/voice"
@@ -318,6 +319,61 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "🎙 Heard: “" + text + "” — thinking…"
 		return m, m.interpretCmd(text)
 
+	case idxLoadedMsg:
+		if msg.index != nil {
+			m.libIndex = msg.index
+		}
+		return m, nil
+
+	case idxMsg:
+		// Terminal event: index built (or failed).
+		if msg.index != nil || msg.err != nil {
+			m.idxState = ""
+			if msg.err != nil {
+				m.pendingCmd = nil
+				m.err = msg.err
+				m.status = "Indexing failed: " + truncateErr(msg.err)
+				return m, nil
+			}
+			m.libIndex = msg.index
+			if path, err := config.LibraryIndexPath(); err == nil {
+				_ = m.libIndex.Save(path)
+			}
+			m.status = fmt.Sprintf("Library indexed — %d tracks.", len(m.libIndex.Records))
+			if m.pendingCmd != nil {
+				cmd := *m.pendingCmd
+				m.pendingCmd = nil
+				return m.runAgentCommand(cmd)
+			}
+			return m, nil
+		}
+		// Progress.
+		m.idxProg = [2]int{msg.done, msg.total}
+		return m, waitIdxCmd(m.idxCh)
+
+	case recommendMsg:
+		m.recommending = false
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = "Recommendations failed: " + truncateErr(msg.err)
+			return m, nil
+		}
+		if len(msg.tracks) == 0 {
+			m.status = "Couldn't find anything to recommend — try a different prompt."
+			return m, nil
+		}
+		m.tracks = msg.tracks
+		title := "Recommended"
+		if q := strings.TrimSpace(msg.query); q != "" {
+			title = "Recommended: " + q
+		}
+		m.source = trackSource{title: title}
+		m.trackCursor = 0
+		m.centerTab = "music"
+		m.focus = panelTracks
+		m.status = fmt.Sprintf("%d recommendations — playing.", len(msg.tracks))
+		return m, m.playSelectedCmd()
+
 	case agentPlayMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -389,10 +445,38 @@ func (m Spotify) runAgentCommand(cmd agent.Command) (tea.Model, tea.Cmd) {
 		vol := cmd.Volume
 		m.status = fmt.Sprintf("Volume %d%%.", vol)
 		return m, m.action(func(ctx context.Context) error { return m.client.SetVolume(ctx, vol) })
+	case agent.ActionRecommend:
+		if m.libIndex == nil {
+			return m.startIndex(&cmd) // build the index first, then recommend
+		}
+		m.recommending = true
+		m.status = "Finding recommendations…"
+		return m, m.recommendCmd(cmd.Query)
+	case agent.ActionReindex:
+		return m.startIndex(nil)
+	case agent.ActionAsk:
+		// Library chat arrives in the next phase; recommendations work now.
+		m.status = "Library chat is coming soon — try “recommend something like …” for now."
+		return m, nil
 	default:
-		m.status = "Sorry, I didn't catch that — try “play <song>”, “shuffle on”, or “skip”."
+		m.status = "Sorry, I didn't catch that — try “play <song>”, “recommend …”, “shuffle on”, or “skip”."
 		return m, nil
 	}
+}
+
+// startIndex kicks off a background build of the library RAG index, optionally
+// stashing an agent command (e.g. a recommend) to run once it's ready.
+func (m Spotify) startIndex(pending *agent.Command) (tea.Model, tea.Cmd) {
+	if m.idxState == "building" {
+		m.pendingCmd = pending // a build is already running; queue the action
+		return m, nil
+	}
+	m.idxState = "building"
+	m.idxProg = [2]int{0, 0}
+	m.pendingCmd = pending
+	m.status = "Indexing your library (one-time)…"
+	m.idxCh = startIndexBuild(m.client, m.agent)
+	return m, waitIdxCmd(m.idxCh)
 }
 
 func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

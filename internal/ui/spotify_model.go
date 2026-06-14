@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"math"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"audiopulse/internal/agent"
 	"audiopulse/internal/config"
 	"audiopulse/internal/downloader"
+	"audiopulse/internal/library"
 	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
 	"audiopulse/internal/voice"
@@ -174,6 +176,16 @@ type Spotify struct {
 	agentBusy bool  // an Interpret call is in flight
 	agentErr  error // last assistant error, shown in the overlay
 
+	// Library RAG index (recommendations + library chat). Loaded from disk on
+	// startup if present; built on demand (with a progress overlay) when the
+	// assistant needs it. pendingCmd is an agent command waiting for the build.
+	libIndex     *library.Index
+	idxState     string // "" | "building"
+	idxProg      [2]int // done, total during a build
+	idxCh        <-chan idxEvent
+	pendingCmd   *agent.Command // recommend/ask to run once the index is built
+	recommending bool
+
 	// Voice control (offline Vosk speech-to-text; `v` to talk). The engine loads
 	// its model lazily on first use and is reused; a spoken phrase is transcribed
 	// and fed into the same assistant pipeline as a typed request.
@@ -202,7 +214,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 
 	cfg := config.Load()
 	ask := textinput.New()
-	ask.Placeholder = "play bohemian rhapsody · shuffle on · skip"
+	ask.Placeholder = "play X · recommend something like X · shuffle · skip"
 	ask.Prompt = "✦ "
 	ask.CharLimit = 120
 	ask.PromptStyle = lipgloss.NewStyle().Foreground(colorAccent)
@@ -217,7 +229,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		user:         user,
 		search:       ti,
 		ask:          ask,
-		agent:        agent.New(cfg.OllamaURL, cfg.OllamaModel),
+		agent:        agent.New(cfg.OllamaURL, cfg.OllamaModel, cfg.OllamaEmbedModel),
 		voiceModel:   cfg.VoiceModel,
 		voiceSource:  cfg.VoiceSource,
 		artW:         w,
@@ -253,7 +265,7 @@ func artDims(cellAspect float64) (w, h int) {
 func (m Spotify) Init() tea.Cmd {
 	// Load saved podcasts up front too, so the podcast pane is populated even in
 	// the side-by-side layout where it's visible without being focused.
-	return tea.Batch(m.loadLibraryCmd(), m.loadShowsCmd(), m.tickCmd(pollPlaying), textinput.Blink)
+	return tea.Batch(m.loadLibraryCmd(), m.loadShowsCmd(), loadIndexCmd(), m.tickCmd(pollPlaying), textinput.Blink)
 }
 
 // --- messages ---------------------------------------------------------------
@@ -357,6 +369,27 @@ type voiceEvent struct {
 
 // voiceMsg delivers a voiceEvent into the Bubble Tea update loop.
 type voiceMsg voiceEvent
+
+// idxLoadedMsg carries the library index loaded from disk at startup (if any).
+type idxLoadedMsg struct{ index *library.Index }
+
+// idxEvent is one step of a background index build: progress (done/total) or a
+// terminal event carrying the finished index or an error.
+type idxEvent struct {
+	done, total int
+	index       *library.Index
+	err         error
+}
+
+// idxMsg delivers an idxEvent into the update loop.
+type idxMsg idxEvent
+
+// recommendMsg carries resolved recommendation tracks (LLM suggestions → search).
+type recommendMsg struct {
+	query  string
+	tracks []spotify.Track
+	err    error
+}
 
 // --- commands ---------------------------------------------------------------
 
@@ -912,6 +945,100 @@ func (m Spotify) interpretCmd(utterance string) tea.Cmd {
 		defer cancel()
 		cmd, err := ag.Interpret(ctx, utterance)
 		return agentResultMsg{utterance: utterance, cmd: cmd, err: err}
+	}
+}
+
+// loadIndexCmd loads the persisted library index from disk (fast; absent → nil).
+func loadIndexCmd() tea.Cmd {
+	return func() tea.Msg {
+		path, err := config.LibraryIndexPath()
+		if err != nil {
+			return idxLoadedMsg{}
+		}
+		ix, _ := library.Load(path)
+		return idxLoadedMsg{index: ix}
+	}
+}
+
+// startIndexBuild gathers + embeds the whole library on a background goroutine,
+// streaming progress then a terminal event with the index (mirrors the export /
+// voice channel pattern).
+func startIndexBuild(sp library.Spotify, emb library.Embedder) <-chan idxEvent {
+	ch := make(chan idxEvent, 64)
+	go func() {
+		defer close(ch)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		ix, err := library.Build(ctx, sp, emb, func(done, total int) {
+			ch <- idxEvent{done: done, total: total}
+		})
+		ch <- idxEvent{index: ix, err: err}
+	}()
+	return ch
+}
+
+// errIndexClosed is returned if the build channel closes without a result.
+var errIndexClosed = errors.New("index build ended unexpectedly")
+
+// waitIdxCmd blocks for the next index-build event.
+func waitIdxCmd(ch <-chan idxEvent) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return idxMsg{err: errIndexClosed}
+		}
+		return idxMsg(ev)
+	}
+}
+
+// recommendCmd builds a taste context from the index (RAG: the user's tracks
+// closest to the seed, or a sample), asks the model for discovery suggestions,
+// then resolves each to a playable track via Spotify search.
+func (m Spotify) recommendCmd(query string) tea.Cmd {
+	ix := m.libIndex
+	ag := m.agent
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		defer cancel()
+
+		var taste []string
+		if strings.TrimSpace(query) != "" {
+			if vecs, err := ag.Embed(ctx, []string{query}); err == nil && len(vecs) > 0 {
+				for _, s := range ix.Search(vecs[0], 15) {
+					taste = append(taste, s.Record.Label())
+				}
+			}
+		}
+		if len(taste) == 0 {
+			for _, r := range ix.Sample(15) {
+				taste = append(taste, r.Label())
+			}
+		}
+
+		sugs, err := ag.Recommend(ctx, query, taste, 12)
+		if err != nil {
+			return recommendMsg{query: query, err: err}
+		}
+		var tracks []spotify.Track
+		seen := make(map[zspotify.ID]bool)
+		for _, s := range sugs {
+			q := s.Title
+			if s.Artist != "" {
+				q += " " + s.Artist
+			}
+			res, err := client.Search(ctx, q)
+			if err != nil || len(res) == 0 {
+				continue
+			}
+			t := res[0]
+			if t.ID == "" || seen[t.ID] {
+				continue
+			}
+			seen[t.ID] = true
+			tracks = append(tracks, t)
+		}
+		return recommendMsg{query: query, tracks: tracks}
 	}
 }
 

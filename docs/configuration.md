@@ -90,8 +90,21 @@ specific model or point at a remote Ollama in `~/.config/audiopulse/config.json`
 | -------------- | ------------------------ | -------------------------------------------------- |
 | `ollama_model` | auto-detect first gemma* | Which local model interprets your requests         |
 | `ollama_url`   | `http://localhost:11434` | The Ollama HTTP endpoint                           |
+| `ollama_embed_model` | `nomic-embed-text` | Embedding model for the library index (recommendations) |
 
 `make doctor` reports whether Ollama is installed, reachable, and has a model.
+
+### Library recommendations (RAG)
+
+Ask the assistant to *"recommend something like Daft Punk"* or *"suggest chill
+focus music"* and it plays a fresh queue. The first such request indexes your
+library once (playlists + Liked Songs → local embeddings, cached at
+`~/.config/audiopulse/library-index.gob`); later requests are fast. Say *"reindex
+my library"* to rebuild after adding playlists. It needs the embedding model:
+`ollama pull nomic-embed-text` (or set `ollama_embed_model` to one you have).
+Spotify's own recommendation API is unavailable to new apps, so suggestions are
+generated locally from your taste and resolved to playable tracks via Search
+([ADR-0015](adr/0015-library-rag.md)).
 
 ## Voice control (offline Vosk)
 

@@ -12,6 +12,7 @@ import (
 
 	"audiopulse/internal/agent"
 	"audiopulse/internal/downloader"
+	"audiopulse/internal/library"
 	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
 )
@@ -702,6 +703,59 @@ func TestVoiceKeyAndTranscript(t *testing.T) {
 	mm, cmd = sampleSpotify().Update(voiceMsg{text: "   "})
 	if cmd != nil || !strings.Contains(mm.(Spotify).status, "Didn't catch") {
 		t.Errorf("empty transcript should ask to retry; status=%q", mm.(Spotify).status)
+	}
+}
+
+func TestRecommendAndIndexFlow(t *testing.T) {
+	// Keep all config IO (the saved index) inside a temp dir.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	// idxLoadedMsg adopts an index loaded from disk.
+	m := sampleSpotify()
+	mm, _ := m.Update(idxLoadedMsg{index: &library.Index{Records: []library.Record{{ID: "a"}}}})
+	if mm.(Spotify).libIndex == nil {
+		t.Fatal("idxLoadedMsg should set libIndex")
+	}
+
+	// recommendMsg loads tracks into the center and plays.
+	mm, cmd := sampleSpotify().Update(recommendMsg{query: "like daft punk", tracks: []spotify.Track{{Title: "Get Lucky", Artist: "Daft Punk"}}})
+	sp := mm.(Spotify)
+	if cmd == nil || sp.source.title != "Recommended: like daft punk" || len(sp.tracks) != 1 {
+		t.Errorf("recommend results should load + play (source=%q tracks=%d)", sp.source.title, len(sp.tracks))
+	}
+
+	// An empty recommendation set explains instead of playing.
+	mm, cmd = sampleSpotify().Update(recommendMsg{query: "x"})
+	if cmd != nil || !strings.Contains(mm.(Spotify).status, "Couldn't find") {
+		t.Errorf("empty recommend should explain; status=%q", mm.(Spotify).status)
+	}
+
+	// With an index present, ActionRecommend dispatches a recommend command.
+	r := sampleSpotify()
+	r.libIndex = &library.Index{Records: []library.Record{{ID: "a", Title: "T", Artist: "A"}}}
+	mm2, cmd2 := r.runAgentCommand(agent.Command{Action: agent.ActionRecommend, Query: "focus"})
+	if cmd2 == nil || !mm2.(Spotify).recommending {
+		t.Error("ActionRecommend with an index should start recommending")
+	}
+
+	// idxMsg terminal sets the index, clears the building state, and runs the
+	// queued command (here a control action, so no network is touched).
+	b := sampleSpotify()
+	b.idxState = "building"
+	next := agent.Command{Action: agent.ActionNext}
+	b.pendingCmd = &next
+	mm3, cmd3 := b.Update(idxMsg{index: &library.Index{Records: []library.Record{{ID: "a"}}}})
+	sp3 := mm3.(Spotify)
+	if sp3.idxState != "" || sp3.libIndex == nil || sp3.pendingCmd != nil || cmd3 == nil {
+		t.Errorf("idxMsg terminal should finish the build and run the pending cmd (state=%q pending=%v)", sp3.idxState, sp3.pendingCmd)
+	}
+
+	// A build progress event keeps the overlay and re-waits.
+	p := sampleSpotify()
+	p.idxState = "building"
+	mm4, _ := p.Update(idxMsg{done: 50, total: 200})
+	if got := mm4.(Spotify).idxProg; got != [2]int{50, 200} {
+		t.Errorf("progress idxMsg should update idxProg, got %v", got)
 	}
 }
 

@@ -16,7 +16,7 @@ func TestInterpretLive(t *testing.T) {
 	if os.Getenv("AUDIOPULSE_OLLAMA_LIVE") == "" {
 		t.Skip("set AUDIOPULSE_OLLAMA_LIVE=1 to run the live Ollama classification test")
 	}
-	c := New(os.Getenv("AUDIOPULSE_OLLAMA_URL"), os.Getenv("AUDIOPULSE_OLLAMA_MODEL"))
+	c := New(os.Getenv("AUDIOPULSE_OLLAMA_URL"), os.Getenv("AUDIOPULSE_OLLAMA_MODEL"), "")
 	utterances := []string{
 		"pause the song",
 		"pause",
@@ -26,7 +26,12 @@ func TestInterpretLive(t *testing.T) {
 		"skip this one",
 		"go back",
 		"play wish you were here by pink floyd",
-		"put on some daft punk",
+		"recommend something like radiohead",
+		"play something like daft punk",
+		"suggest some chill study music",
+		"how many radiohead songs do i have",
+		"what playlists do i have",
+		"rebuild the library index",
 		"shuffle on",
 		"turn off shuffle",
 		"loop this song",

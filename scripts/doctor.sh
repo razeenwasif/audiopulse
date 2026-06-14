@@ -135,6 +135,11 @@ if [ -n "$tags" ]; then
   else
     note "No Ollama models installed — run 'ollama pull gemma3'"
   fi
+  if printf '%s' "$tags" | grep -qi 'embed'; then
+    ok "An embedding model is installed (library recommendations)"
+  else
+    note "No embedding model — run 'ollama pull nomic-embed-text' for library recommendations"
+  fi
 else
   note "Ollama not running — start it with 'ollama serve' to use the ':' assistant"
 fi

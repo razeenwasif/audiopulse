@@ -107,6 +107,17 @@ prompt says so and the rest of AudioPulse is unaffected. See
 [Configuration → AI assistant](configuration.md#ai-assistant-local-ollamagemma)
 for setup.
 
+**Recommendations (grounded in your library):** ask *"recommend something like
+Daft Punk"*, *"suggest chill study music"*, or *"play something like my workout
+playlist"* and it builds a queue and plays it. The first request **indexes your
+library** once (a progress box shows it; ~30 s, then cached) using local
+embeddings; later requests are fast. Suggestions favour **discovery** (new songs
+that fit your taste), resolved to playable tracks via Search — Spotify's own
+recommendation API is unavailable to new apps, so this runs locally from your
+library. Say *"reindex my library"* after adding playlists. Needs an embedding
+model: `ollama pull nomic-embed-text`. See
+[Configuration → Library recommendations](configuration.md#library-recommendations-rag).
+
 **Voice control (offline):** press `v` to **speak** the same kinds of commands
 instead of typing them. A "🎙 Listening…" indicator appears; speak, and capture
 stops on its own when you pause. The audio is transcribed by a **local**

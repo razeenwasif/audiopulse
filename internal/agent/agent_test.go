@@ -72,6 +72,59 @@ func TestParseCommand(t *testing.T) {
 	}
 }
 
+func TestParseCommandNewActions(t *testing.T) {
+	cases := []struct {
+		content string
+		want    Command
+	}{
+		{`{"action":"recommend","query":"like daft punk"}`, Command{Action: ActionRecommend, Query: "like daft punk", Repeat: "off"}},
+		{`{"action":"recommend","query":""}`, Command{Action: ActionRecommend, Repeat: "off"}}, // empty seed is ok
+		{`{"action":"ask","query":"how many radiohead songs"}`, Command{Action: ActionAsk, Query: "how many radiohead songs", Repeat: "off"}},
+		{`{"action":"ask","query":""}`, Command{Action: ActionUnknown, Repeat: "off"}}, // empty question → unknown
+		{`{"action":"reindex"}`, Command{Action: ActionReindex, Repeat: "off"}},
+	}
+	for _, c := range cases {
+		got, err := parseCommand(c.content)
+		if err != nil {
+			t.Fatalf("parseCommand(%q): %v", c.content, err)
+		}
+		if got != c.want {
+			t.Errorf("parseCommand(%q) = %+v, want %+v", c.content, got, c.want)
+		}
+	}
+}
+
+func TestParseSuggestions(t *testing.T) {
+	got := parseSuggestions(`{"suggestions":[
+		{"title":" Get Lucky ","artist":"Daft Punk"},
+		{"title":"Instant Crush","artist":"Daft Punk"},
+		{"title":"Get Lucky","artist":"Daft Punk"},
+		{"title":"","artist":"Nobody"}
+	]}`)
+	if len(got) != 2 {
+		t.Fatalf("want 2 (deduped, blank dropped), got %d: %+v", len(got), got)
+	}
+	if got[0].Title != "Get Lucky" || got[0].Artist != "Daft Punk" {
+		t.Errorf("first suggestion = %+v", got[0])
+	}
+	if parseSuggestions("not json") != nil {
+		t.Error("garbage should yield nil suggestions")
+	}
+
+	// Robustness: a bare array (no wrapper key).
+	if got := parseSuggestions(`[{"title":"A","artist":"x"},{"title":"B","artist":"y"}]`); len(got) != 2 {
+		t.Errorf("bare array should parse, got %d", len(got))
+	}
+	// A renamed wrapper key + a brace inside a title.
+	if got := parseSuggestions(`{"songs":[{"name":"Blue Monday {live}","by":"New Order"}]}`); len(got) != 1 || got[0].Title != "Blue Monday {live}" || got[0].Artist != "New Order" {
+		t.Errorf("renamed keys / brace-in-title should parse, got %+v", got)
+	}
+	// Prose around the JSON.
+	if got := parseSuggestions("Sure: {\"suggestions\":[{\"title\":\"T\",\"artist\":\"A\"}]} done"); len(got) != 1 {
+		t.Errorf("prose-wrapped object should parse, got %d", len(got))
+	}
+}
+
 func TestPickModel(t *testing.T) {
 	cases := []struct {
 		name       string

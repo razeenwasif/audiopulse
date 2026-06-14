@@ -69,6 +69,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **AI recommendations grounded in your library** — ask the `:`/`v` assistant to
+  *"recommend something like Daft Punk"*, *"suggest some chill study music"*, or
+  *"play something like my workout playlist"* and it builds a queue and plays it.
+  How it works, all **local**: your playlists + Liked Songs are indexed once into
+  a semantic index (embeddings via your local `nomic-embed-text`, ~30 s for a few
+  thousand tracks, cached at `~/.config/audiopulse/library-index.gob`); a request
+  retrieves your closest-matching tracks as a *taste* signal, a local Gemma model
+  suggests songs to **discover**, and each is resolved to a playable track via
+  Spotify Search. (Spotify's own recommendation API is dead for newly-created
+  apps — 403/404 — so this is fully library + LLM driven.) The index builds
+  automatically on first use behind a progress overlay; say *"reindex my library"*
+  to rebuild after big changes. New `ollama_embed_model` config (default
+  `nomic-embed-text`) ([ADR-0015](docs/adr/0015-library-rag.md)).
 - **Voice control (offline, press `v`)** — speak your commands. A microphone
   capture (ffmpeg → PulseAudio) is transcribed by a **local** [Vosk](https://alphacephei.com/vosk/)
   model and the text is fed into the same assistant pipeline as `:` — so *"play

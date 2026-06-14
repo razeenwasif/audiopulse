@@ -52,6 +52,9 @@ type Config struct {
 	OllamaModel string `json:"ollama_model,omitempty"`
 	// OllamaURL overrides the Ollama endpoint. Empty → http://localhost:11434.
 	OllamaURL string `json:"ollama_url,omitempty"`
+	// OllamaEmbedModel is the local embedding model used to index the library for
+	// RAG (recommendations + library chat). Empty → "nomic-embed-text".
+	OllamaEmbedModel string `json:"ollama_embed_model,omitempty"`
 	// VoiceModel is the path to the Vosk speech-recognition model used by the
 	// voice control (`v`). Empty → third_party/vosk/model (set up by `make voice`).
 	VoiceModel string `json:"voice_model,omitempty"`
@@ -114,6 +117,15 @@ func ScopesPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "scopes"), nil
+}
+
+// LibraryIndexPath is where the semantic library index (RAG) is cached.
+func LibraryIndexPath() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "library-index.gob"), nil
 }
 
 // LibrespotCacheDir is where librespot caches its credentials and audio.
