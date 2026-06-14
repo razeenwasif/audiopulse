@@ -176,6 +176,14 @@ type Spotify struct {
 	agentBusy bool  // an Interpret call is in flight
 	agentErr  error // last assistant error, shown in the overlay
 
+	// Multi-turn library chat (opened by an "ask" request). Grounded in libIndex.
+	chatOpen   bool
+	chatTurns  []chatTurn
+	chatInput  textinput.Model
+	chatBusy   bool // an Answer call is in flight
+	chatScroll int  // top display-line of the transcript (1<<30 = pinned bottom)
+	chatGen    int  // staleness for in-flight answers
+
 	// Library RAG index (recommendations + library chat). Loaded from disk on
 	// startup if present; built on demand (with a progress overlay) when the
 	// assistant needs it. pendingCmd is an agent command waiting for the build.
@@ -214,12 +222,20 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 
 	cfg := config.Load()
 	ask := textinput.New()
-	ask.Placeholder = "play X · recommend something like X · shuffle · skip"
+	ask.Placeholder = "play X · recommend like X · ask about your library · skip"
 	ask.Prompt = "✦ "
 	ask.CharLimit = 120
 	ask.PromptStyle = lipgloss.NewStyle().Foreground(colorAccent)
 	ask.TextStyle = lipgloss.NewStyle().Foreground(colorText)
 	ask.Cursor.Style = lipgloss.NewStyle().Foreground(colorAccent)
+
+	chatInput := textinput.New()
+	chatInput.Placeholder = "ask a follow-up…"
+	chatInput.Prompt = "› "
+	chatInput.CharLimit = 200
+	chatInput.PromptStyle = lipgloss.NewStyle().Foreground(colorAccent)
+	chatInput.TextStyle = lipgloss.NewStyle().Foreground(colorText)
+	chatInput.Cursor.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
 	w, h := artDims(cellAspect)
 	return Spotify{
@@ -229,6 +245,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		user:         user,
 		search:       ti,
 		ask:          ask,
+		chatInput:    chatInput,
 		agent:        agent.New(cfg.OllamaURL, cfg.OllamaModel, cfg.OllamaEmbedModel),
 		voiceModel:   cfg.VoiceModel,
 		voiceSource:  cfg.VoiceSource,
@@ -389,6 +406,19 @@ type recommendMsg struct {
 	query  string
 	tracks []spotify.Track
 	err    error
+}
+
+// chatTurn is one line of the library-chat transcript.
+type chatTurn struct {
+	who  string // "you" | "ai"
+	text string
+}
+
+// chatAnswerMsg delivers a grounded answer for the chat panel.
+type chatAnswerMsg struct {
+	gen  int
+	text string
+	err  error
 }
 
 // --- commands ---------------------------------------------------------------
@@ -735,6 +765,73 @@ func (m *Spotify) scrollLyricsModal(delta int) {
 	m.lyricsScroll = clamp(from+delta, 0, maxStart)
 }
 
+// --- chat panel layout -------------------------------------------------------
+
+// chatDisp is one rendered (wrapped) line of the chat transcript.
+type chatDisp struct {
+	text string
+	who  string // "you" | "ai" | "" (blank spacer)
+}
+
+func (m Spotify) chatModalWidth() int { return clamp(m.width*2/3, 50, 96) }
+
+// chatBodyH is how many transcript rows the panel shows at once.
+func (m Spotify) chatBodyH() int {
+	// box = border(2)+padding(2)+header+sep+body+sep+input+hint.
+	bh := m.height - 12
+	if bh < 3 {
+		bh = 3
+	}
+	return bh
+}
+
+// chatLines flattens the transcript into wrapped display lines at inner width w.
+func (m Spotify) chatLines(w int) []chatDisp {
+	if w < 8 {
+		w = 8
+	}
+	var out []chatDisp
+	for i, t := range m.chatTurns {
+		if i > 0 {
+			out = append(out, chatDisp{}) // blank line between turns
+		}
+		label := "You"
+		if t.who == "ai" {
+			label = "AI"
+		}
+		pad := strings.Repeat(" ", len(label)+2)
+		for j, wl := range wrapText(t.text, w-len(label)-2) {
+			if j == 0 {
+				out = append(out, chatDisp{text: label + ": " + wl, who: t.who})
+			} else {
+				out = append(out, chatDisp{text: pad + wl, who: t.who})
+			}
+		}
+	}
+	if m.chatBusy {
+		if len(out) > 0 {
+			out = append(out, chatDisp{})
+		}
+		out = append(out, chatDisp{text: "AI: …thinking", who: "ai"})
+	}
+	return out
+}
+
+// chatStart is the clamped top display-line index (1<<30 pins to the bottom).
+func (m Spotify) chatStart() int {
+	disp := m.chatLines(m.chatModalWidth() - 4)
+	maxStart := max0(len(disp) - m.chatBodyH())
+	return clamp(m.chatScroll, 0, maxStart)
+}
+
+// scrollChat moves the transcript viewport by delta rows.
+func (m *Spotify) scrollChat(delta int) {
+	from := m.chatStart()
+	disp := m.chatLines(m.chatModalWidth() - 4)
+	maxStart := max0(len(disp) - m.chatBodyH())
+	m.chatScroll = clamp(from+delta, 0, maxStart)
+}
+
 // searchDebounceCmd fires after a short pause so we search once the user stops
 // typing, not on every keystroke.
 func (m Spotify) searchDebounceCmd(gen int) tea.Cmd {
@@ -1040,6 +1137,44 @@ func (m Spotify) recommendCmd(query string) tea.Cmd {
 		}
 		return recommendMsg{query: query, tracks: tracks}
 	}
+}
+
+// answerCmd retrieves grounding context from the index and asks the model a
+// library question (with prior history), for the chat panel.
+func (m Spotify) answerCmd(question string, history []agent.Turn, gen int) tea.Cmd {
+	ix := m.libIndex
+	ag := m.agent
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		ctxLines := ix.Context(ctx, ag, question, 20)
+		text, err := ag.Answer(ctx, question, ctxLines, history)
+		return chatAnswerMsg{gen: gen, text: text, err: err}
+	}
+}
+
+// chatHistory converts the transcript so far into agent turns.
+func chatHistory(turns []chatTurn) []agent.Turn {
+	out := make([]agent.Turn, 0, len(turns))
+	for _, t := range turns {
+		role := "user"
+		if t.who == "ai" {
+			role = "assistant"
+		}
+		out = append(out, agent.Turn{Role: role, Text: t.text})
+	}
+	return out
+}
+
+// sendChat appends the user's question and kicks off a grounded answer.
+func (m Spotify) sendChat(q string) (Spotify, tea.Cmd) {
+	history := chatHistory(m.chatTurns)
+	m.chatTurns = append(m.chatTurns, chatTurn{who: "you", text: q})
+	m.chatInput.Reset()
+	m.chatBusy = true
+	m.chatGen++
+	m.chatScroll = 1 << 30 // pin to bottom
+	return m, m.answerCmd(q, history, m.chatGen)
 }
 
 // agentPlayCmd searches for the assistant's requested query so the top hit can

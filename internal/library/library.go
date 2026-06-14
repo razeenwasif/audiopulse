@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"audiopulse/internal/spotify"
 
@@ -256,6 +257,80 @@ func (ix *Index) Sample(n int) []Record {
 	out := make([]Record, 0, n)
 	for i := 0; i < n; i++ {
 		out = append(out, ix.Records[int(float64(i)*step)])
+	}
+	return out
+}
+
+// Context builds grounding lines for a chat question: a one-line library
+// summary, the semantically nearest tracks (via emb), and keyword matches (which
+// help exact "how many X" / specific-artist questions), capped.
+func (ix *Index) Context(ctx context.Context, emb Embedder, question string, k int) []string {
+	if ix == nil {
+		return nil
+	}
+	const maxLines = 60
+	lines := []string{ix.summary()}
+	seen := make(map[string]bool)
+	add := func(r Record) bool {
+		if seen[r.ID] {
+			return true
+		}
+		seen[r.ID] = true
+		s := r.Label()
+		if len(r.Playlists) > 0 {
+			s += " [" + strings.Join(r.Playlists, ", ") + "]"
+		}
+		lines = append(lines, s)
+		return len(lines) < maxLines
+	}
+	if emb != nil {
+		if vecs, err := emb.Embed(ctx, []string{question}); err == nil && len(vecs) > 0 {
+			for _, sc := range ix.Search(vecs[0], k) {
+				if !add(sc.Record) {
+					return lines
+				}
+			}
+		}
+	}
+	for _, w := range salientWords(question) {
+		for _, r := range ix.Filter(w) {
+			if !add(r) {
+				return lines
+			}
+		}
+	}
+	return lines
+}
+
+// summary is a one-line description of the library (count + playlists).
+func (ix *Index) summary() string {
+	pls := ix.PlaylistNames()
+	if len(pls) > 30 {
+		extra := len(pls) - 30
+		pls = append(pls[:30:30], fmt.Sprintf("…and %d more", extra))
+	}
+	return fmt.Sprintf("The library has %d tracks across these playlists: %s.",
+		len(ix.Records), strings.Join(pls, ", "))
+}
+
+// chatStopwords are dropped when extracting keywords from a question.
+var chatStopwords = map[string]bool{
+	"the": true, "a": true, "an": true, "do": true, "have": true, "how": true,
+	"many": true, "what": true, "which": true, "are": true, "any": true,
+	"songs": true, "song": true, "track": true, "tracks": true, "playlist": true,
+	"playlists": true, "music": true, "some": true, "and": true, "with": true,
+	"got": true, "for": true, "you": true, "can": true, "give": true, "show": true,
+}
+
+// salientWords pulls the meaningful (≥3-char, non-stopword) tokens from a query.
+func salientWords(s string) []string {
+	var out []string
+	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		if len(w) >= 3 && !chatStopwords[w] {
+			out = append(out, w)
+		}
 	}
 	return out
 }

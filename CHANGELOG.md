@@ -69,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Ask your library (multi-turn chat)** — ask the `:`/`v` assistant questions
+  like *"what kind of music is in my library?"*, *"how many Radiohead songs do I
+  have?"*, or *"which playlists have sad songs?"* and it opens a scrollable chat
+  panel and answers — **grounded in your actual library** (it retrieves relevant
+  tracks + your playlist names as context). Keep the conversation going with
+  follow-ups (`↵` to ask, `↑↓` to scroll, `esc` to close); history is kept within
+  the session. Runs entirely on your local model ([ADR-0015](docs/adr/0015-library-rag.md)).
 - **AI recommendations grounded in your library** — ask the `:`/`v` assistant to
   *"recommend something like Daft Punk"*, *"suggest some chill study music"*, or
   *"play something like my workout playlist"* and it builds a queue and plays it.

@@ -83,4 +83,22 @@ func TestRAGLive(t *testing.T) {
 	if resolved == 0 {
 		t.Error("no recommendations resolved via Spotify search")
 	}
+
+	// Grounded chat (multi-turn).
+	var history []agent.Turn
+	for _, q := range []string{
+		"what kind of music is in my library?",
+		"name a few artists I clearly like",
+	} {
+		lines := ix.Context(ctx, ag, q, 20)
+		ans, err := ag.Answer(ctx, q, lines, history)
+		if err != nil {
+			t.Fatalf("Answer(%q): %v", q, err)
+		}
+		t.Logf("Q: %s\n   A: %s", q, ans)
+		if ans == "" {
+			t.Errorf("empty answer for %q", q)
+		}
+		history = append(history, agent.Turn{Role: "user", Text: q}, agent.Turn{Role: "assistant", Text: ans})
+	}
 }

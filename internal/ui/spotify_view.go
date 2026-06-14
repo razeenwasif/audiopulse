@@ -93,6 +93,14 @@ func (m Spotify) View() string {
 		out = overlay(out, box, max0(x), max0(y))
 	}
 
+	// Float the library-chat panel, centered.
+	if m.chatOpen {
+		box := m.renderChatModal()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
 	// Float the keybinding cheatsheet, centered.
 	if m.showHelp {
 		box := m.renderCheatsheet()
@@ -221,7 +229,7 @@ func (m Spotify) renderCheatsheet() string {
 		{"s", "shuffle"},
 		{"r / R", "loop all / loop one"},
 		{"/", "search (Spotlight)"},
-		{":", "AI assistant — control · recommend (RAG over your library)"},
+		{":", "AI assistant — control · recommend · ask about your library"},
 		{"v", "speak a request (voice control, offline Vosk)"},
 		{"esc", "back · close overlay"},
 		{"?", "toggle this help"},
@@ -322,7 +330,7 @@ func (m Spotify) renderAgentPrompt() string {
 	case m.agentErr != nil:
 		status = lipgloss.NewStyle().Foreground(colorErr).Render(truncate(m.agentErr.Error(), innerW))
 	default:
-		status = faint.Render("play a song · recommend something like X · shuffle/skip/pause · volume")
+		status = faint.Render("play · recommend like X · ask about your library · shuffle/skip/pause")
 	}
 	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Ask AI  (local Ollama)")
 	hint := faint.Render("↵ send    esc close")
@@ -384,6 +392,54 @@ func (m Spotify) renderListening() string {
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
 		Padding(1, 3).
 		Render(body)
+	return solidify(box, spotlightBGCode)
+}
+
+// renderChatModal builds the floating multi-turn library-chat panel.
+func (m Spotify) renderChatModal() string {
+	boxW := m.chatModalWidth()
+	innerW := boxW - 4
+
+	header := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Ask your library")
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", innerW))
+
+	disp := m.chatLines(innerW)
+	bodyH := m.chatBodyH()
+	start := m.chatStart()
+	end := start + bodyH
+	if end > len(disp) {
+		end = len(disp)
+	}
+	you := lipgloss.NewStyle().Foreground(colorMuted)
+	ai := m.st.rowTitle
+	rows := make([]string, 0, bodyH)
+	for i := start; i < end; i++ {
+		switch d := disp[i]; d.who {
+		case "you":
+			rows = append(rows, you.Render(d.text))
+		case "ai":
+			rows = append(rows, ai.Render(d.text))
+		default:
+			rows = append(rows, " ")
+		}
+	}
+	for len(rows) < bodyH {
+		rows = append(rows, " ")
+	}
+
+	m.chatInput.Width = innerW - 4
+	input := m.chatInput.View()
+	if m.chatBusy {
+		input = lipgloss.NewStyle().Foreground(colorFaint).Render("thinking…")
+	}
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render(truncate("↵ ask · ↑↓ scroll · esc close", innerW))
+
+	parts := append([]string{header, sep}, rows...)
+	parts = append(parts, sep, input, hint)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 	return solidify(box, spotlightBGCode)
 }
 

@@ -290,6 +290,47 @@ func (c *Client) Embed(ctx context.Context, inputs []string) ([][]float32, error
 	return env.Embeddings, nil
 }
 
+// Turn is one message of a chat history (Role: "user" or "assistant").
+type Turn struct {
+	Role string
+	Text string
+}
+
+// answerSystem grounds the library chat assistant.
+const answerSystem = `You are AudioPulse's library assistant. The user asks about their music library and taste. Answer conversationally and concisely (1–4 sentences). Use the provided library context; when it doesn't cover the question, answer from general music knowledge and say so briefly. Never claim a track is in their library unless it appears in the context. No markdown headers, just a friendly reply.`
+
+// Answer responds to a question about the library, grounded in libraryContext
+// (retrieved track/playlist lines) and the prior conversation history.
+func (c *Client) Answer(ctx context.Context, question string, libraryContext []string, history []Turn) (string, error) {
+	msgs := []chatMessage{{Role: "system", Content: answerSystem}}
+	for _, t := range history {
+		role := "user"
+		if t.Role == "assistant" {
+			role = "assistant"
+		}
+		msgs = append(msgs, chatMessage{Role: role, Content: t.Text})
+	}
+	user := question
+	if len(libraryContext) > 0 {
+		var b strings.Builder
+		b.WriteString("Library context:\n")
+		for _, l := range libraryContext {
+			b.WriteString("- ")
+			b.WriteString(l)
+			b.WriteString("\n")
+		}
+		b.WriteString("\nQuestion: ")
+		b.WriteString(question)
+		user = b.String()
+	}
+	msgs = append(msgs, chatMessage{Role: "user", Content: user})
+	out, err := c.chat(ctx, msgs, false, 0.3)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // Suggestion is one recommended track (resolved to a playable track via search).
 type Suggestion struct {
 	Title  string `json:"title"`

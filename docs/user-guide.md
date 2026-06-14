@@ -118,6 +118,13 @@ library. Say *"reindex my library"* after adding playlists. Needs an embedding
 model: `ollama pull nomic-embed-text`. See
 [Configuration → Library recommendations](configuration.md#library-recommendations-rag).
 
+**Ask your library (chat):** ask a question — *"what kind of music is in my
+library?"*, *"how many Radiohead songs do I have?"*, *"which playlists have sad
+songs?"* — and a chat panel opens with a grounded answer (it pulls in your
+matching tracks + playlist names as context). Keep going with follow-ups:
+`↵` asks, `↑`/`↓` scroll the transcript, `esc` closes. It uses the same local
+index as recommendations, so the first question may trigger the one-time build.
+
 **Voice control (offline):** press `v` to **speak** the same kinds of commands
 instead of typing them. A "🎙 Listening…" indicator appears; speak, and capture
 stops on its own when you pause. The audio is transcribed by a **local**

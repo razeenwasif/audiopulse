@@ -759,6 +759,51 @@ func TestRecommendAndIndexFlow(t *testing.T) {
 	}
 }
 
+func TestChatPanelFlow(t *testing.T) {
+	// ActionAsk with an index opens a chat, posts the question, and goes busy.
+	m := sampleSpotify()
+	m.libIndex = &library.Index{Records: []library.Record{{ID: "a", Title: "Creep", Artist: "Radiohead"}}}
+	mm, cmd := m.runAgentCommand(agent.Command{Action: agent.ActionAsk, Query: "how many radiohead songs do i have"})
+	sp := mm.(Spotify)
+	if !sp.chatOpen || !sp.chatBusy || cmd == nil {
+		t.Fatalf("ActionAsk should open the chat and ask (open=%v busy=%v)", sp.chatOpen, sp.chatBusy)
+	}
+	if len(sp.chatTurns) != 1 || sp.chatTurns[0].who != "you" {
+		t.Fatalf("the question should be the first (you) turn: %+v", sp.chatTurns)
+	}
+	gen := sp.chatGen
+
+	// The grounded answer appends an AI turn and clears busy.
+	mm2, _ := sp.Update(chatAnswerMsg{gen: gen, text: "You have 1 Radiohead track."})
+	sp2 := mm2.(Spotify)
+	if sp2.chatBusy || len(sp2.chatTurns) != 2 || sp2.chatTurns[1].who != "ai" {
+		t.Errorf("answer should append an AI turn and clear busy: %+v", sp2.chatTurns)
+	}
+	if !strings.Contains(sp2.View(), "Ask your library") {
+		t.Error("chat panel should render while open")
+	}
+
+	// A stale answer (old gen) is ignored.
+	mm3, _ := sp2.Update(chatAnswerMsg{gen: gen - 1, text: "stale"})
+	if len(mm3.(Spotify).chatTurns) != 2 {
+		t.Error("a stale answer should be ignored")
+	}
+
+	// A follow-up via the chat input posts another turn.
+	sp2.chatInput.SetValue("which album is it on")
+	mm4, cmd4 := sp2.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	sp4 := mm4.(Spotify)
+	if cmd4 == nil || len(sp4.chatTurns) != 3 || !sp4.chatBusy {
+		t.Errorf("a follow-up should post a new question (turns=%d busy=%v)", len(sp4.chatTurns), sp4.chatBusy)
+	}
+
+	// Esc closes the panel.
+	mm5, _ := sp4.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if mm5.(Spotify).chatOpen {
+		t.Error("esc should close the chat panel")
+	}
+}
+
 func TestClampHelper(t *testing.T) {
 	cases := []struct{ v, lo, hi, want int }{
 		{5, 0, 10, 5}, {-1, 0, 10, 0}, {11, 0, 10, 10}, {3, 0, -1, 0},

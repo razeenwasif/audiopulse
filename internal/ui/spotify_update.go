@@ -351,6 +351,21 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.idxProg = [2]int{msg.done, msg.total}
 		return m, waitIdxCmd(m.idxCh)
 
+	case chatAnswerMsg:
+		if msg.gen != m.chatGen {
+			return m, nil // a newer question supersedes this answer
+		}
+		m.chatBusy = false
+		text := strings.TrimSpace(msg.text)
+		if msg.err != nil {
+			text = "(couldn't answer: " + truncateErr(msg.err) + ")"
+		} else if text == "" {
+			text = "I'm not sure."
+		}
+		m.chatTurns = append(m.chatTurns, chatTurn{who: "ai", text: text})
+		m.chatScroll = 1 << 30 // pin to bottom
+		return m, nil
+
 	case recommendMsg:
 		m.recommending = false
 		if msg.err != nil {
@@ -455,9 +470,16 @@ func (m Spotify) runAgentCommand(cmd agent.Command) (tea.Model, tea.Cmd) {
 	case agent.ActionReindex:
 		return m.startIndex(nil)
 	case agent.ActionAsk:
-		// Library chat arrives in the next phase; recommendations work now.
-		m.status = "Library chat is coming soon — try “recommend something like …” for now."
-		return m, nil
+		if m.libIndex == nil {
+			return m.startIndex(&cmd) // build the index first, then answer
+		}
+		// Open a fresh chat grounded in the library and answer the question.
+		m.chatOpen = true
+		m.chatTurns = nil
+		m.chatScroll = 0
+		focus := m.chatInput.Focus()
+		m2, ansCmd := m.sendChat(cmd.Query)
+		return m2, tea.Batch(focus, ansCmd)
 	default:
 		m.status = "Sorry, I didn't catch that — try “play <song>”, “recommend …”, “shuffle on”, or “skip”."
 		return m, nil
@@ -550,6 +572,40 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		var cmd tea.Cmd
 		m.ask, cmd = m.ask.Update(msg)
+		return m, cmd
+	}
+
+	// Library chat panel: type follow-ups; scroll the transcript; esc closes.
+	if m.chatOpen {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			m.chatOpen = false
+			m.chatInput.Blur()
+			return m, nil
+		case "enter":
+			q := strings.TrimSpace(m.chatInput.Value())
+			if q == "" || m.chatBusy {
+				return m, nil
+			}
+			m2, cmd := m.sendChat(q)
+			return m2, cmd
+		case "up", "ctrl+p":
+			m.scrollChat(-1)
+			return m, nil
+		case "down", "ctrl+n":
+			m.scrollChat(1)
+			return m, nil
+		case "pgup":
+			m.scrollChat(-max0(m.chatBodyH() - 1))
+			return m, nil
+		case "pgdown":
+			m.scrollChat(max0(m.chatBodyH() - 1))
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.chatInput, cmd = m.chatInput.Update(msg)
 		return m, cmd
 	}
 
