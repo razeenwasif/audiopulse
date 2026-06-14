@@ -58,6 +58,25 @@ func (m Spotify) View() string {
 		out = overlay(out, box, max0(x), max0(y))
 	}
 
+	// Float the AI assistant prompt over the UI.
+	if m.focus == panelAgent {
+		box := m.renderAgentPrompt()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := m.height / 5
+		if bh := lipgloss.Height(box); y+bh > m.height {
+			y = max0(m.height - bh)
+		}
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
+	// Float a small "listening" indicator while voice capture is active.
+	if m.voiceListening {
+		box := m.renderListening()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := m.height / 5
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
 	// Float the full-lyrics pane, centered.
 	if m.lyricsModal {
 		box := m.renderLyricsModal()
@@ -194,6 +213,8 @@ func (m Spotify) renderCheatsheet() string {
 		{"s", "shuffle"},
 		{"r / R", "loop all / loop one"},
 		{"/", "search (Spotlight)"},
+		{":", "ask the AI assistant (local Ollama/Gemma)"},
+		{"v", "speak a request (voice control, offline Vosk)"},
 		{"esc", "back · close overlay"},
 		{"?", "toggle this help"},
 		{"q", "quit"},
@@ -271,6 +292,50 @@ func (m Spotify) renderSpotlight() string {
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
 		Padding(1, 2).Width(boxW).
+		Render(body)
+	return solidify(box, spotlightBGCode)
+}
+
+// renderAgentPrompt builds the floating AI-assistant prompt box (opened with
+// ':'), mirroring the Spotlight search styling.
+func (m Spotify) renderAgentPrompt() string {
+	boxW := clamp(m.width*3/5, 48, 76)
+	innerW := boxW - 4
+
+	m.ask.Width = innerW - 4
+	input := m.ask.View()
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", innerW))
+
+	faint := lipgloss.NewStyle().Foreground(colorFaint)
+	var status string
+	switch {
+	case m.agentBusy:
+		status = faint.Render("Thinking…")
+	case m.agentErr != nil:
+		status = lipgloss.NewStyle().Foreground(colorErr).Render(truncate(m.agentErr.Error(), innerW))
+	default:
+		status = faint.Render("Ask in plain words: play a song · shuffle/repeat · skip · pause · volume")
+	}
+	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Ask AI  (local Ollama)")
+	hint := faint.Render("↵ send    esc close")
+
+	body := lipgloss.JoinVertical(lipgloss.Left, title, input, sep, status, "", hint)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(body)
+	return solidify(box, spotlightBGCode)
+}
+
+// renderListening builds the small floating "🎙 Listening…" indicator shown
+// while voice capture is running.
+func (m Spotify) renderListening() string {
+	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("🎙  Listening…")
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render("speak your request — it stops when you pause")
+	body := lipgloss.JoinVertical(lipgloss.Center, title, "", hint)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 3).
 		Render(body)
 	return solidify(box, spotlightBGCode)
 }
@@ -1242,6 +1307,8 @@ func (m Spotify) renderSpotifyHelp() string {
 		key("s") + dim(" shuffle"),
 		key("r/R") + dim(" loop all/one"),
 		key("/") + dim(" search"),
+		key(":") + dim(" ask AI"),
+		key("v") + dim(" voice"),
 		key("q") + dim(" quit"),
 	}
 	line := "  " + strings.Join(parts, dim("  •  "))

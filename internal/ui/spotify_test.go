@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"audiopulse/internal/agent"
 	"audiopulse/internal/downloader"
 	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
@@ -613,6 +614,94 @@ func TestSpotlightFlow(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("enter should start playback")
+	}
+}
+
+func TestAgentPromptFlow(t *testing.T) {
+	rune := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	var m tea.Model = sampleSpotify()
+
+	// ":" opens the assistant prompt.
+	m, _ = m.Update(rune(":"))
+	if m.(Spotify).focus != panelAgent {
+		t.Fatal("':' should open the AI assistant prompt")
+	}
+	// Enter on a typed request flips agentBusy and issues an Interpret command.
+	m, _ = m.Update(rune("s"))
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.(Spotify).agentBusy || cmd == nil {
+		t.Error("enter should mark the assistant busy and issue an interpret command")
+	}
+	// An interpret error keeps the overlay open and surfaces the error.
+	m, _ = m.Update(agentResultMsg{err: errors.New("Ollama unreachable")})
+	if sp := m.(Spotify); sp.focus != panelAgent || sp.agentBusy || sp.agentErr == nil {
+		t.Error("an interpret error should keep the prompt open and show the error")
+	}
+	if !strings.Contains(m.(Spotify).View(), "Ollama unreachable") {
+		t.Error("the assistant overlay should render the error text")
+	}
+
+	// A shuffle command closes the prompt, sets local intent, and issues a command.
+	m, cmd = m.(Spotify).Update(agentResultMsg{cmd: agent.Command{Action: agent.ActionShuffle, On: true}})
+	if sp := m.(Spotify); sp.focus == panelAgent || !sp.shuffle || cmd == nil {
+		t.Errorf("a shuffle command should close the prompt, set shuffle, and act (focus=%d shuffle=%v)", m.(Spotify).focus, m.(Spotify).shuffle)
+	}
+
+	// A repeat "one" maps to the Spotify "track" state.
+	m, _ = m.(Spotify).Update(agentResultMsg{cmd: agent.Command{Action: agent.ActionRepeat, Repeat: "one"}})
+	if got := m.(Spotify).repeat; got != "track" {
+		t.Errorf("repeat one → %q, want track", got)
+	}
+
+	// A play command kicks off a search; the results load into the center and play.
+	m, cmd = m.(Spotify).Update(agentResultMsg{cmd: agent.Command{Action: agent.ActionPlay, Query: "midnight city"}})
+	if cmd == nil {
+		t.Fatal("a play command should issue a search")
+	}
+	m, cmd = m.(Spotify).Update(agentPlayMsg{query: "midnight city", tracks: []spotify.Track{{Title: "Midnight City", Artist: "M83"}}})
+	sp := m.(Spotify)
+	if cmd == nil || sp.source.title != "Ask: midnight city" || len(sp.tracks) != 1 {
+		t.Errorf("play results should load into the center and start playback (source=%q tracks=%d)", sp.source.title, len(sp.tracks))
+	}
+
+	// An unrecognised command just sets an explanatory status.
+	m, cmd = sp.Update(agentResultMsg{cmd: agent.Command{Action: agent.ActionUnknown}})
+	if cmd != nil || !strings.Contains(strings.ToLower(m.(Spotify).status), "didn't catch") {
+		t.Errorf("unknown command should explain, not act; status=%q", m.(Spotify).status)
+	}
+}
+
+func TestVoiceKeyAndTranscript(t *testing.T) {
+	rune := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+	// Tests build without the `vosk` tag, so voice support is absent → `v`
+	// explains how to enable it instead of trying to listen.
+	var m tea.Model = sampleSpotify()
+	m, cmd := m.Update(rune("v"))
+	if cmd != nil || m.(Spotify).voiceListening {
+		t.Error("without voice support, 'v' should not start listening")
+	}
+	if !strings.Contains(strings.ToLower(m.(Spotify).status), "make voice") {
+		t.Errorf("status = %q, want a 'make voice' hint", m.(Spotify).status)
+	}
+
+	// A transcript feeds the same assistant pipeline as a typed request.
+	mm, cmd := sampleSpotify().Update(voiceMsg{text: "play midnight city"})
+	sp := mm.(Spotify)
+	if cmd == nil {
+		t.Error("a transcript should kick off interpretation")
+	}
+	if sp.voiceListening {
+		t.Error("voiceMsg should clear the listening flag")
+	}
+	if !strings.Contains(sp.status, "Heard:") {
+		t.Errorf("status = %q, want it to echo what was heard", sp.status)
+	}
+
+	// An empty transcript (nothing heard) prompts a retry, no command issued.
+	mm, cmd = sampleSpotify().Update(voiceMsg{text: "   "})
+	if cmd != nil || !strings.Contains(mm.(Spotify).status, "Didn't catch") {
+		t.Errorf("empty transcript should ask to retry; status=%q", mm.(Spotify).status)
 	}
 }
 

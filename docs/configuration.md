@@ -64,6 +64,68 @@ directory**, set in `~/.config/audiopulse/config.json`:
 spotDL sources audio from YouTube (lossy; occasional mismatches) and skips files
 that already exist, so an interrupted export is resumable.
 
+## AI assistant (local Ollama/Gemma)
+
+Press `:` to open a prompt and control playback in plain language — "play
+bohemian rhapsody", "turn shuffle on", "loop this song", "skip", "pause", "set
+the volume to 30". The request is interpreted by a **local** model served by
+[Ollama](https://ollama.com); nothing leaves your machine
+([ADR-0013](adr/0013-local-nl-control.md)).
+
+Setup (all optional — every other feature works without it):
+
+1. Install Ollama and start it (`ollama serve`).
+2. Pull a model: `make ollama-model` (defaults to `gemma3`; override with
+   `make ollama-model OLLAMA_MODEL=gemma3:12b`), or `ollama pull gemma3`.
+3. Run AudioPulse and press `:`.
+
+By default the assistant auto-detects the first installed `gemma*` model. Pin a
+specific model or point at a remote Ollama in `~/.config/audiopulse/config.json`:
+
+```json
+{ "client_id": "…", "ollama_model": "gemma3:12b", "ollama_url": "http://localhost:11434" }
+```
+
+| Field          | Default                  | Meaning                                            |
+| -------------- | ------------------------ | -------------------------------------------------- |
+| `ollama_model` | auto-detect first gemma* | Which local model interprets your requests         |
+| `ollama_url`   | `http://localhost:11434` | The Ollama HTTP endpoint                           |
+
+`make doctor` reports whether Ollama is installed, reachable, and has a model.
+
+## Voice control (offline Vosk)
+
+Press `v` to **speak** a command instead of typing it at the `:` prompt — the
+microphone is transcribed by a **local** [Vosk](https://alphacephei.com/vosk/)
+model and the text is fed into the same assistant pipeline
+([ADR-0014](adr/0014-voice-control-vosk.md)). Speak after pressing `v`; capture
+stops automatically when you pause.
+
+This is an **opt-in build** (it needs a C toolchain, the Vosk native library, and
+a model — none required for the normal build):
+
+```sh
+make voice        # downloads libvosk + a small English model, builds with -tags vosk
+./audiopulse      # press v and talk
+```
+
+`make voice` fetches `libvosk.so` + the model into `third_party/vosk/`
+(gitignored, ~50 MB) and links them with an embedded rpath, so no
+`LD_LIBRARY_PATH` is needed. Tune it in `~/.config/audiopulse/config.json`:
+
+```json
+{ "client_id": "…", "voice_model": "third_party/vosk/model", "voice_source": "default" }
+```
+
+| Field          | Default                   | Meaning                                                     |
+| -------------- | ------------------------- | ---------------------------------------------------------- |
+| `voice_model`  | `third_party/vosk/model`  | Path to the Vosk model (swap in a larger one for accuracy) |
+| `voice_source` | `default`                 | PulseAudio capture source (`RDPSource` under WSLg)         |
+
+On **WSL2** the Windows mic is forwarded by WSLg as the `RDPSource` PulseAudio
+source; the `default` source resolves to it. `make doctor` checks ffmpeg, the
+Vosk files, and whether your capture source is present (and warns if it's muted).
+
 ## Environment variables
 
 AudioPulse itself reads no custom environment variables. The variables that

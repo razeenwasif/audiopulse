@@ -69,6 +69,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   computed can't make a line wrap and grow the layout past the screen.
 
 ### Added
+- **Voice control (offline, press `v`)** — speak your commands. A microphone
+  capture (ffmpeg → PulseAudio) is transcribed by a **local** [Vosk](https://alphacephei.com/vosk/)
+  model and the text is fed into the same assistant pipeline as `:` — so *"play
+  bohemian rhapsody"*, *"shuffle on"*, or *"skip"* work spoken or typed. Press
+  `v`, speak, and it stops automatically when you pause (Vosk endpoint detection —
+  terminals can't do hold-to-talk). Fully offline, no Python, no API. It's an
+  **opt-in build**: `make voice` downloads the Vosk library + a small English
+  model (gitignored, ~50 MB) into `third_party/vosk/` and builds with `-tags
+  vosk`; the default build, tests, and CI need none of it. Configure the model
+  path / capture source with `voice_model` / `voice_source`; `make doctor` checks
+  ffmpeg, the Vosk files, and your mic ([ADR-0014](docs/adr/0014-voice-control-vosk.md)).
+- **AI assistant (local, press `:`)** — control playback in plain language:
+  *"play bohemian rhapsody"*, *"turn shuffle on"*, *"loop this song"*, *"skip"*,
+  *"go back"*, *"pause"*, *"set the volume to 30"*. A floating prompt sends the
+  request to a **local** [Ollama](https://ollama.com) model (auto-detects your
+  first installed `gemma*` model; override with `ollama_model` / `ollama_url` in
+  `config.json`) — **nothing leaves the machine**. The model returns a small JSON
+  intent (Ollama JSON mode + a few-shot prompt — no fine-tuning, works across
+  Gemma variants), which maps to the existing transport controls; "play" requests
+  search Spotify and play the top hit. Optional and self-contained: if Ollama
+  isn't running the prompt says so and nothing else is affected. Install a model
+  with `make ollama-model`; `make doctor` checks Ollama's status
+  ([ADR-0013](docs/adr/0013-local-nl-control.md)).
 - **Export your library to local files** — press `e` to download your entire
   Spotify library (Liked Songs + all playlists) to local audio via
   [spotDL](https://github.com/spotDL/spotify-downloader). It gathers every track

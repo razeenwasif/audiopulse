@@ -1,0 +1,5 @@
+# The Vosk native library and model are large and fetched by `make voice`
+# (scripts/fetch-vosk.sh) — never committed.
+*
+!.gitignore
+!README.md

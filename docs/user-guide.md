@@ -68,8 +68,9 @@ the full-lyrics pane; `a` adds the selected track to the play queue; `L`
 likes/unlikes the selected or playing track (`♥`); `F` unfollows the highlighted
 show; `esc` backs out of a show's episodes; `space` play/pause;
 `n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R`
-loop-all/loop-one (repeat); `/` opens search; `e` exports your library to local
-files; `?` shows all shortcuts; `q` quit.
+loop-all/loop-one (repeat); `/` opens search; `:` opens the AI assistant; `v`
+speaks a command (voice); `e` exports your library to local files; `?` shows all
+shortcuts; `q` quit.
 
 **Exporting your library:** press `e` to download your **Liked Songs + all
 playlists** to local audio files via [spotDL](https://github.com/spotDL/spotify-downloader)
@@ -95,6 +96,26 @@ play/pause area to toggle.
 that overlays the UI. Type and results update live; `↑`/`↓` select a result,
 `enter` plays it (and loads the results into the center panel), and `esc` closes
 the overlay.
+
+**AI assistant (local):** press `:` to open a prompt and control playback in
+plain language — *"play bohemian rhapsody"*, *"turn shuffle on"*, *"loop this
+song"*, *"skip"*, *"pause"*, *"set the volume to 30"*. `enter` sends the request;
+`esc` closes. A local [Ollama](https://ollama.com) model (auto-detected `gemma3`
+by default) interprets it — **nothing leaves your machine**. "Play" requests
+search Spotify and play the top hit. It's optional: if Ollama isn't running the
+prompt says so and the rest of AudioPulse is unaffected. See
+[Configuration → AI assistant](configuration.md#ai-assistant-local-ollamagemma)
+for setup.
+
+**Voice control (offline):** press `v` to **speak** the same kinds of commands
+instead of typing them. A "🎙 Listening…" indicator appears; speak, and capture
+stops on its own when you pause. The audio is transcribed by a **local**
+[Vosk](https://alphacephei.com/vosk/) model (no cloud, no API) and fed into the
+assistant — so *"play bohemian rhapsody"* or *"skip"* work spoken or typed. This
+is an **opt-in build**: run `make voice` once to download the recognizer + model
+and build with voice support (the normal build doesn't need it). Without it, `v`
+just reminds you to run `make voice`. Setup and tuning (model, mic source) are in
+[Configuration → Voice control](configuration.md#voice-control-offline-vosk).
 
 > **Podcast playback is best-effort.** AudioPulse can list and queue episodes, but
 > actual audio is decoded by librespot, whose podcast support is limited — some

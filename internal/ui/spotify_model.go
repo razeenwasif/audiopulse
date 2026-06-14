@@ -11,10 +11,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	zspotify "github.com/zmb3/spotify/v2"
 
+	"audiopulse/internal/agent"
 	"audiopulse/internal/config"
 	"audiopulse/internal/downloader"
 	"audiopulse/internal/lyrics"
 	"audiopulse/internal/spotify"
+	"audiopulse/internal/voice"
 )
 
 // spotifyPanel identifies the focused panel.
@@ -26,6 +28,7 @@ const (
 	panelPodcasts
 	panelLyrics
 	panelSearch
+	panelAgent
 )
 
 // centerSplitMin is the minimum center outer width to show music and podcasts
@@ -164,6 +167,21 @@ type Spotify struct {
 	searchGen        int // debounce/staleness generation
 	searching        bool
 
+	// AI assistant (local Ollama/Gemma): a floating prompt (opened with ':')
+	// turns a natural-language request into a playback command.
+	agent     *agent.Client
+	ask       textinput.Model
+	agentBusy bool  // an Interpret call is in flight
+	agentErr  error // last assistant error, shown in the overlay
+
+	// Voice control (offline Vosk speech-to-text; `v` to talk). The engine loads
+	// its model lazily on first use and is reused; a spoken phrase is transcribed
+	// and fed into the same assistant pipeline as a typed request.
+	voiceEngine    *voice.Engine
+	voiceListening bool
+	voiceModel     string // config path; empty → package default
+	voiceSource    string // PulseAudio source; empty → "default"
+
 	focus  spotifyPanel
 	status string
 	err    error
@@ -180,6 +198,15 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 	ti.TextStyle = lipgloss.NewStyle().Foreground(colorText)
 	ti.Cursor.Style = lipgloss.NewStyle().Foreground(colorAccent)
 
+	cfg := config.Load()
+	ask := textinput.New()
+	ask.Placeholder = "play bohemian rhapsody · shuffle on · skip"
+	ask.Prompt = "✦ "
+	ask.CharLimit = 120
+	ask.PromptStyle = lipgloss.NewStyle().Foreground(colorAccent)
+	ask.TextStyle = lipgloss.NewStyle().Foreground(colorText)
+	ask.Cursor.Style = lipgloss.NewStyle().Foreground(colorAccent)
+
 	w, h := artDims(cellAspect)
 	return Spotify{
 		st:           newStyles(),
@@ -187,6 +214,10 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		deviceID:     deviceID,
 		user:         user,
 		search:       ti,
+		ask:          ask,
+		agent:        agent.New(cfg.OllamaURL, cfg.OllamaModel),
+		voiceModel:   cfg.VoiceModel,
+		voiceSource:  cfg.VoiceSource,
 		artW:         w,
 		artH:         h,
 		repeat:       "off",
@@ -296,6 +327,28 @@ type lyricsMsg struct {
 	trackID zspotify.ID
 	res     lyrics.Result
 	err     error
+}
+
+// agentResultMsg delivers the assistant's interpretation of an utterance.
+type agentResultMsg struct {
+	utterance string
+	cmd       agent.Command
+	err       error
+}
+
+// agentPlayMsg carries search results for an assistant "play X" request.
+type agentPlayMsg struct {
+	query  string
+	tracks []spotify.Track
+	err    error
+}
+
+// voiceMsg delivers a transcribed spoken request (and the opened engine, so it
+// is reused across calls).
+type voiceMsg struct {
+	engine *voice.Engine
+	text   string
+	err    error
 }
 
 // --- commands ---------------------------------------------------------------
@@ -844,6 +897,50 @@ func waitExportCmd(ch <-chan downloader.Progress) tea.Cmd {
 	}
 }
 
+// interpretCmd asks the local assistant to turn an utterance into a Command.
+func (m Spotify) interpretCmd(utterance string) tea.Cmd {
+	ag := m.agent
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		cmd, err := ag.Interpret(ctx, utterance)
+		return agentResultMsg{utterance: utterance, cmd: cmd, err: err}
+	}
+}
+
+// agentPlayCmd searches for the assistant's requested query so the top hit can
+// be played.
+func (m Spotify) agentPlayCmd(query string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		tracks, err := client.Search(ctx, query)
+		return agentPlayMsg{query: query, tracks: tracks, err: err}
+	}
+}
+
+// listenCmd opens the voice engine (loading the model on first use) and captures
+// a single spoken phrase, returning the transcript.
+func (m Spotify) listenCmd() tea.Cmd {
+	eng := m.voiceEngine
+	modelPath := m.voiceModel
+	source := m.voiceSource
+	return func() tea.Msg {
+		if eng == nil {
+			e, err := voice.Open(modelPath, source)
+			if err != nil {
+				return voiceMsg{err: err}
+			}
+			eng = e
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		text, err := eng.Listen(ctx)
+		return voiceMsg{engine: eng, text: text, err: err}
+	}
+}
+
 // action wraps a player control call into a command.
 func (m Spotify) action(fn func(ctx context.Context) error) tea.Cmd {
 	return func() tea.Msg {
@@ -853,5 +950,9 @@ func (m Spotify) action(fn func(ctx context.Context) error) tea.Cmd {
 	}
 }
 
-// Quit performs no teardown here; librespot is owned by main.
-func (m Spotify) Quit() {}
+// Quit releases the voice engine's model; librespot is owned by main.
+func (m Spotify) Quit() {
+	if m.voiceEngine != nil {
+		m.voiceEngine.Close()
+	}
+}

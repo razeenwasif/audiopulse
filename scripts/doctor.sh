@@ -117,6 +117,51 @@ else
   note "ffmpeg not found — spotDL needs it to convert audio (install ffmpeg, or 'spotdl --download-ffmpeg')"
 fi
 
+# --- AI assistant (optional, local Ollama/Gemma) -----------------------------
+printf '\nAI assistant (optional — natural-language control, press ":")\n'
+ollama_url="${AUDIOPULSE_OLLAMA_URL:-http://localhost:11434}"
+if command -v ollama >/dev/null 2>&1; then
+  ok "ollama installed"
+else
+  note "ollama not installed — the ':' assistant needs it (https://ollama.com); everything else works without it"
+fi
+tags="$(curl -fsS --max-time 2 "$ollama_url/api/tags" 2>/dev/null || true)"
+if [ -n "$tags" ]; then
+  ok "Ollama reachable at $ollama_url"
+  if printf '%s' "$tags" | grep -qi 'gemma'; then
+    ok "A gemma model is installed (auto-detected by the assistant)"
+  elif printf '%s' "$tags" | grep -q '"name"'; then
+    note "No gemma model found — run 'ollama pull gemma3', or set ollama_model in config.json"
+  else
+    note "No Ollama models installed — run 'ollama pull gemma3'"
+  fi
+else
+  note "Ollama not running — start it with 'ollama serve' to use the ':' assistant"
+fi
+
+# --- Voice control (optional, offline Vosk) ----------------------------------
+printf '\nVoice control (optional — speak commands, press "v")\n'
+if command -v ffmpeg >/dev/null 2>&1; then
+  ok "ffmpeg present (microphone capture)"
+else
+  note "ffmpeg not found — voice capture needs it"
+fi
+if [ -f third_party/vosk/libvosk.so ] && [ -d third_party/vosk/model ]; then
+  ok "Vosk library + model installed (build with 'make voice')"
+else
+  note "Vosk not set up — run 'make voice' to download the lib+model and enable voice"
+fi
+# Is a capture source available (and not obviously muted)?
+src="$(pactl get-default-source 2>/dev/null || pactl info 2>/dev/null | sed -n 's/^Default Source: //p')"
+if [ -n "$src" ]; then
+  ok "Default capture source: $src"
+  if pactl list sources 2>/dev/null | grep -A20 "Name: $src" | grep -qi 'Mute: yes'; then
+    note "  …but it's muted — unmute the mic, or pick another 'voice_source' in config.json"
+  fi
+else
+  note "No PulseAudio capture source — check your mic (WSL: WSLg forwards it as RDPSource)"
+fi
+
 # --- Summary -----------------------------------------------------------------
 printf '\n\033[1mSummary:\033[0m %d ok, %d warning(s), %d failure(s)\n\n' "$pass" "$warn" "$fail"
 [ "$fail" -eq 0 ]

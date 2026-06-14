@@ -4,7 +4,7 @@ BINARY := audiopulse
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall librespot spotdl
+.PHONY: build run silent run-silent test vet fmt clean doctor install uninstall librespot spotdl ollama-model voice run-voice
 
 ## build: compile with real audio (needs libasound2-dev)
 build:
@@ -42,6 +42,22 @@ librespot:
 spotdl:
 	@command -v pipx >/dev/null 2>&1 && pipx install spotdl || pip install --user spotdl
 	@echo "spotDL installed. FFmpeg is required for conversion (system ffmpeg is used if present)."
+
+## voice: fetch Vosk lib+model and build with offline voice control (press 'v')
+voice:
+	@bash scripts/fetch-vosk.sh
+	go build -tags vosk -o $(BINARY) .
+
+## run-voice: build with voice control and launch
+run-voice: voice
+	./$(BINARY)
+
+## ollama-model: pull the default model for the ':' AI assistant (needs ollama)
+ollama-model:
+	@command -v ollama >/dev/null 2>&1 || { echo "Install Ollama first: https://ollama.com"; exit 1; }
+	ollama pull $(OLLAMA_MODEL)
+
+OLLAMA_MODEL ?= gemma3
 
 ## doctor: check the toolchain and audio stack
 doctor:

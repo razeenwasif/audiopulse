@@ -2,13 +2,16 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"audiopulse/internal/agent"
 	"audiopulse/internal/downloader"
 	"audiopulse/internal/spotify"
+	"audiopulse/internal/voice"
 )
 
 const seekStep = 5 * time.Second
@@ -277,6 +280,53 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, waitExportCmd(m.exportCh)
 
+	case agentResultMsg:
+		m.agentBusy = false
+		if msg.err != nil {
+			m.agentErr = msg.err // keep the prompt open showing the error
+			return m, nil
+		}
+		// Understood — close the prompt and carry out the action.
+		m.focus = panelTracks
+		m.ask.Blur()
+		return m.runAgentCommand(msg.cmd)
+
+	case voiceMsg:
+		m.voiceListening = false
+		if msg.engine != nil {
+			m.voiceEngine = msg.engine
+		}
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = "Voice: " + truncateErr(msg.err)
+			return m, nil
+		}
+		text := strings.TrimSpace(msg.text)
+		if text == "" {
+			m.status = "🎙 Didn't catch that — press v and try again."
+			return m, nil
+		}
+		// Feed the transcript into the same assistant pipeline as a typed request.
+		m.status = "🎙 Heard: “" + text + "” — thinking…"
+		return m, m.interpretCmd(text)
+
+	case agentPlayMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = "Search failed."
+			return m, nil
+		}
+		if len(msg.tracks) == 0 {
+			m.status = "No results for “" + msg.query + "”."
+			return m, nil
+		}
+		m.tracks = msg.tracks
+		m.source = trackSource{title: "Ask: " + msg.query}
+		m.trackCursor = 0
+		m.centerTab = "music"
+		m.focus = panelTracks
+		return m, m.playSelectedCmd()
+
 	case tea.MouseMsg:
 		return m.handleMouse(msg)
 
@@ -284,6 +334,57 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSpotifyKey(msg)
 	}
 	return m, nil
+}
+
+// runAgentCommand carries out an interpreted assistant command, mirroring the
+// equivalent keyboard action (and reusing m.action so playback errors trigger
+// device recovery).
+func (m Spotify) runAgentCommand(cmd agent.Command) (tea.Model, tea.Cmd) {
+	switch cmd.Action {
+	case agent.ActionPlay:
+		m.status = "Looking for “" + cmd.Query + "”…"
+		return m, m.agentPlayCmd(cmd.Query)
+	case agent.ActionPause:
+		m.status = "Pausing."
+		return m, m.action(func(ctx context.Context) error { return m.client.Pause(ctx) })
+	case agent.ActionResume:
+		deviceID := m.deviceID
+		m.status = "Resuming."
+		return m, m.action(func(ctx context.Context) error { return m.client.Resume(ctx, deviceID) })
+	case agent.ActionNext:
+		m.status = "Skipping ahead."
+		return m, m.action(func(ctx context.Context) error { return m.client.Next(ctx) })
+	case agent.ActionPrevious:
+		m.status = "Going back."
+		return m, m.action(func(ctx context.Context) error { return m.client.Previous(ctx) })
+	case agent.ActionShuffle:
+		m.shuffle = cmd.On
+		want := cmd.On
+		if want {
+			m.status = "Shuffle on."
+		} else {
+			m.status = "Shuffle off."
+		}
+		return m, m.action(func(ctx context.Context) error { return m.client.SetShuffle(ctx, want) })
+	case agent.ActionRepeat:
+		mode := "off"
+		switch cmd.Repeat {
+		case "all":
+			mode = "context"
+		case "one":
+			mode = "track"
+		}
+		m.repeat = mode
+		m.status = "Repeat " + cmd.Repeat + "."
+		return m, m.action(func(ctx context.Context) error { return m.client.SetRepeat(ctx, mode) })
+	case agent.ActionVolume:
+		vol := cmd.Volume
+		m.status = fmt.Sprintf("Volume %d%%.", vol)
+		return m, m.action(func(ctx context.Context) error { return m.client.SetVolume(ctx, vol) })
+	default:
+		m.status = "Sorry, I didn't catch that — try “play <song>”, “shuffle on”, or “skip”."
+		return m, nil
+	}
 }
 
 func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -330,6 +431,33 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(cmd, m.searchDebounceCmd(m.searchGen))
 		}
+		return m, cmd
+	}
+
+	// AI assistant prompt overlay: type a request; enter sends it to the model.
+	if m.focus == panelAgent {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc":
+			m.focus = panelTracks
+			m.ask.Blur()
+			m.agentBusy = false
+			return m, nil
+		case "enter":
+			q := strings.TrimSpace(m.ask.Value())
+			if q == "" || m.agentBusy {
+				return m, nil
+			}
+			m.agentBusy = true
+			m.agentErr = nil
+			return m, m.interpretCmd(q)
+		}
+		if m.agentBusy {
+			return m, nil // ignore edits while the model is thinking
+		}
+		var cmd tea.Cmd
+		m.ask, cmd = m.ask.Update(msg)
 		return m, cmd
 	}
 
@@ -393,6 +521,27 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.focus = panelSearch
 		return m, m.search.Focus()
+
+	case ":":
+		// Open the AI assistant prompt (local Ollama/Gemma).
+		m.focus = panelAgent
+		m.ask.Reset()
+		m.agentBusy = false
+		m.agentErr = nil
+		return m, m.ask.Focus()
+
+	case "v":
+		// Voice control: speak a request (offline Vosk → assistant pipeline).
+		if !voice.Available() {
+			m.status = "Voice control isn't built in — run `make voice`."
+			return m, nil
+		}
+		if m.voiceListening {
+			return m, nil
+		}
+		m.voiceListening = true
+		m.status = "🎙 Listening… speak now"
+		return m, m.listenCmd()
 
 	case "tab":
 		return m, m.focusPanel(m.nextPanel(m.focus))
@@ -713,6 +862,15 @@ func isDeviceError(err error) bool {
 	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "device") || strings.Contains(s, "no active")
+}
+
+// truncateErr renders an error as a short, single-line status string.
+func truncateErr(err error) string {
+	s := strings.TrimSpace(err.Error())
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return truncate(s, 60)
 }
 
 func clamp(v, lo, hi int) int {

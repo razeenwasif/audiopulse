@@ -47,6 +47,17 @@ type Config struct {
 	// MusicDir is where the local library / downloads live. Empty → the default
 	// ~/Music/audiopulse. Set it (e.g. "/mnt/e/Music") to use another drive.
 	MusicDir string `json:"music_dir,omitempty"`
+	// OllamaModel is the local model the AI assistant uses to interpret commands
+	// (e.g. "gemma3:12b"). Empty → auto-detect the first installed gemma* model.
+	OllamaModel string `json:"ollama_model,omitempty"`
+	// OllamaURL overrides the Ollama endpoint. Empty → http://localhost:11434.
+	OllamaURL string `json:"ollama_url,omitempty"`
+	// VoiceModel is the path to the Vosk speech-recognition model used by the
+	// voice control (`v`). Empty → third_party/vosk/model (set up by `make voice`).
+	VoiceModel string `json:"voice_model,omitempty"`
+	// VoiceSource is the PulseAudio capture source for voice input. Empty →
+	// "default" (the system default input; "RDPSource" under WSLg).
+	VoiceSource string `json:"voice_source,omitempty"`
 }
 
 // MusicPath resolves the music library directory (expanding a leading ~) and
