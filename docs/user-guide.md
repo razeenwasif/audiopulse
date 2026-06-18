@@ -67,7 +67,8 @@ a show's episodes / plays an episode (Podcasts), or — on the Lyrics panel — 
 the full-lyrics pane; `a` adds the selected track to the play queue; `L`
 likes/unlikes the selected or playing track (`♥`); `F` unfollows the highlighted
 show; `esc` backs out of a show's episodes; `space` play/pause;
-`n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `r`/`R`
+`n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `S` **smart
+shuffle** (queue similar songs not in the open playlist); `r`/`R`
 loop-all/loop-one (repeat); `/` opens search; `:` opens the AI assistant; `v`
 speaks a command (voice); `e` exports your library to local files; `?` shows all
 shortcuts; `q` quit.
@@ -86,8 +87,7 @@ odd-titled uploads that simply aren't on YouTube; source those elsewhere if you
 want them. A stalled (throttled) batch is auto-killed after 3 minutes and its
 tracks retried on the next run. **Podcasts are not included** (spotDL can't
 download them; that needs the podcast/RSS route). The shuffle and repeat glyphs turn
-**green** when active. (*Smart shuffle* has no Web API endpoint and can't be
-toggled here; pressing `S` says so.) **Mouse:** wheel scrolls the panel under the
+**green** when active. **Mouse:** wheel scrolls the panel under the
 pointer; click a library entry to open it; click a track to play it; click the
 lyrics panel to focus it; click or drag the progress bar to seek; click the
 play/pause area to toggle.
@@ -117,6 +117,17 @@ recommendation API is unavailable to new apps, so this runs locally from your
 library. Say *"reindex my library"* after adding playlists. Needs an embedding
 model: `ollama pull nomic-embed-text`. See
 [Configuration → Library recommendations](configuration.md#library-recommendations-rag).
+
+**Smart shuffle (`S`):** open a playlist (or Liked Songs / any track list), then
+press `S` to build a *smart shuffle* — a fresh queue of songs that **fit that
+playlist's vibe but aren't already in it**, then plays it. Unlike plain shuffle
+(`s`, which reorders the current tracks), this is **discovery**: the playlist you're
+viewing is sampled as a taste seed, a local model suggests similar songs in the
+same genres/era/mood, each is resolved to a playable track via Search, and any
+that turn out to already be in the playlist are dropped. You can also trigger it
+by voice or the `:` prompt — *"smart shuffle this playlist"*, *"shuffle in some
+similar songs"*. It needs Ollama running (same model as the assistant); no library
+index is required since the open playlist is the seed.
 
 **Ask your library (chat):** ask a question — *"what kind of music is in my
 library?"*, *"how many Radiohead songs do I have?"*, *"which playlists have sad

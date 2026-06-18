@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Smart shuffle (`S`)** — a from-scratch recommendation shuffle. With a playlist
+  (or any track list) open, `S` builds a fresh queue of songs that fit that
+  playlist's vibe but **aren't already in it**, then plays it. The open list is
+  sampled as a taste seed, a local Ollama model suggests similar songs (same
+  genres/era/mood), each is resolved to a playable track via Search, and any that
+  are in fact already in the playlist are dropped. Also reachable by voice / the
+  `:` prompt (*"smart shuffle this playlist"*, *"shuffle in some similar songs"*).
+  Needs only Ollama — no library index, since the playlist is the seed. Replaces
+  the old `S` stub that reported smart shuffle as unavailable.
+
+### Fixed
+- **AI assistant model auto-detect no longer picks an embedding model.** The
+  first installed `gemma*` model was selected, but `embeddinggemma` is
+  embedding-only and 400s on `/api/chat` — breaking `:` / voice / recommend /
+  smart shuffle for anyone who had it installed without pinning `ollama_model`.
+  Auto-detect now skips models whose name contains `embed`.
+
 ### Changed
 - The visualizer bars are now thin (one cell wide, separated by a one-cell gap)
   for a cleaner spectrum look.

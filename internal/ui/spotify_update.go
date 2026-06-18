@@ -389,6 +389,25 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("%d recommendations — playing.", len(msg.tracks))
 		return m, m.playSelectedCmd()
 
+	case smartShuffleMsg:
+		m.recommending = false
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = "Smart shuffle failed: " + truncateErr(msg.err)
+			return m, nil
+		}
+		if len(msg.tracks) == 0 {
+			m.status = "Smart shuffle came up empty — try a fuller or more focused playlist."
+			return m, nil
+		}
+		m.tracks = msg.tracks
+		m.source = trackSource{title: "Smart Shuffle: " + msg.source}
+		m.trackCursor = 0
+		m.centerTab = "music"
+		m.focus = panelTracks
+		m.status = fmt.Sprintf("Smart shuffle — %d fresh songs like “%s”.", len(msg.tracks), msg.source)
+		return m, m.playSelectedCmd()
+
 	case agentPlayMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -467,6 +486,8 @@ func (m Spotify) runAgentCommand(cmd agent.Command) (tea.Model, tea.Cmd) {
 		m.recommending = true
 		m.status = "Finding recommendations…"
 		return m, m.recommendCmd(cmd.Query)
+	case agent.ActionShuffleAI:
+		return m.startSmartShuffle()
 	case agent.ActionReindex:
 		return m.startIndex(nil)
 	case agent.ActionAsk:
@@ -484,6 +505,29 @@ func (m Spotify) runAgentCommand(cmd agent.Command) (tea.Model, tea.Cmd) {
 		m.status = "Sorry, I didn't catch that — try “play <song>”, “recommend …”, “shuffle on”, or “skip”."
 		return m, nil
 	}
+}
+
+// startSmartShuffle builds a smart shuffle from the track list the user is
+// viewing: similar songs that are NOT already in it. It seeds from the current
+// list (a playlist, Liked Songs, search results…) so no extra context is needed,
+// and reuses the recommend spinner. Needs Ollama for the suggestions.
+func (m Spotify) startSmartShuffle() (tea.Model, tea.Cmd) {
+	if m.recommending {
+		return m, nil // a recommend/shuffle is already in flight
+	}
+	if len(m.tracks) == 0 {
+		m.status = "Open a playlist first, then press S to smart-shuffle in similar songs."
+		return m, nil
+	}
+	name := strings.TrimSpace(m.source.title)
+	name = strings.TrimPrefix(name, "Smart Shuffle: ") // re-shuffling a shuffle keeps the base name
+	name = strings.TrimPrefix(name, "Recommended: ")
+	if name == "" {
+		name = "this playlist"
+	}
+	m.recommending = true
+	m.status = "Smart shuffling “" + name + "” — finding similar songs…"
+	return m, m.smartShuffleCmd(m.tracks, name)
 }
 
 // startIndex kicks off a background build of the library RAG index, optionally
@@ -800,8 +844,7 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		want := m.shuffle
 		return m, m.action(func(ctx context.Context) error { return m.client.SetShuffle(ctx, want) })
 	case "S":
-		m.status = "Smart shuffle isn't available via the Spotify Web API (client-only feature)."
-		return m, nil
+		return m.startSmartShuffle()
 	case "r":
 		return m, m.setRepeat("context")
 	case "R":

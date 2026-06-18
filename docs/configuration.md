@@ -79,8 +79,10 @@ Setup (all optional — every other feature works without it):
    `make ollama-model OLLAMA_MODEL=gemma3:12b`), or `ollama pull gemma3`.
 3. Run AudioPulse and press `:`.
 
-By default the assistant auto-detects the first installed `gemma*` model. Pin a
-specific model or point at a remote Ollama in `~/.config/audiopulse/config.json`:
+By default the assistant auto-detects the first installed `gemma*` chat model
+(embedding-only models such as `embeddinggemma` and `nomic-embed-text` are
+skipped — they can't serve chat). Pin a specific model or point at a remote
+Ollama in `~/.config/audiopulse/config.json`:
 
 ```json
 { "client_id": "…", "ollama_model": "gemma3:12b", "ollama_url": "http://localhost:11434" }
@@ -105,6 +107,17 @@ my library"* to rebuild after adding playlists. It needs the embedding model:
 Spotify's own recommendation API is unavailable to new apps, so suggestions are
 generated locally from your taste and resolved to playable tracks via Search
 ([ADR-0015](adr/0015-library-rag.md)).
+
+### Smart shuffle
+
+Press **`S`** with a playlist (or any track list) open to build a *smart shuffle*:
+a fresh queue of songs that fit that playlist's vibe but **aren't already in it**.
+The open playlist is sampled as the taste seed, the local model suggests similar
+songs, each is resolved via Search, and tracks already in the playlist are
+filtered out. It works on whatever you're viewing (a playlist, Liked Songs, search
+results) and needs only Ollama — **no library index**, since the playlist itself
+is the seed. You can also trigger it by voice/`:` (*"smart shuffle this
+playlist"*). It reuses the assistant's chat model (`ollama_model`).
 
 ## Voice control (offline Vosk)
 
