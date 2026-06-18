@@ -563,18 +563,63 @@ func TestShuffleStickyAcrossPoll(t *testing.T) {
 	}
 }
 
-func TestSmartShuffleIsInformative(t *testing.T) {
+func TestSmartShuffleFlow(t *testing.T) {
+	// Pressing S with a playlist loaded starts a smart shuffle (without touching
+	// the plain shuffle toggle) and launches the resolver command.
 	var m tea.Model = sampleSpotify()
 	before := m.(Spotify).shuffle
 	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
-	if m.(Spotify).shuffle != before {
-		t.Error("smart shuffle should not change shuffle state")
+	sp := m.(Spotify)
+	if sp.shuffle != before {
+		t.Error("smart shuffle must not flip the plain shuffle state")
 	}
-	if cmd != nil {
-		t.Error("smart shuffle should not issue an API command")
+	if cmd == nil || !sp.recommending || !strings.Contains(sp.status, "Smart shuffling") {
+		t.Errorf("S should start smart shuffling (recommending=%v status=%q)", sp.recommending, sp.status)
 	}
-	if !strings.Contains(m.(Spotify).status, "Smart shuffle") {
-		t.Error("smart shuffle should set an explanatory status")
+
+	// With no track list loaded, it explains instead of calling the model.
+	empty := sampleSpotify()
+	empty.tracks = nil
+	mm, cmd := empty.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	if cmd != nil || !strings.Contains(mm.(Spotify).status, "Open a playlist") {
+		t.Errorf("S with no tracks should explain; status=%q", mm.(Spotify).status)
+	}
+
+	// A resolved smart-shuffle result loads the fresh queue and plays it.
+	mm, cmd = sampleSpotify().Update(smartShuffleMsg{source: "Chill Vibes", tracks: []spotify.Track{{Title: "Teardrop", Artist: "Massive Attack"}}})
+	res := mm.(Spotify)
+	if cmd == nil || res.source.title != "Smart Shuffle: Chill Vibes" || len(res.tracks) != 1 || res.recommending {
+		t.Errorf("smart shuffle results should load + play (source=%q tracks=%d)", res.source.title, len(res.tracks))
+	}
+
+	// An empty result set explains rather than playing.
+	mm, cmd = sampleSpotify().Update(smartShuffleMsg{source: "Chill Vibes"})
+	if cmd != nil || !strings.Contains(mm.(Spotify).status, "came up empty") {
+		t.Errorf("empty smart shuffle should explain; status=%q", mm.(Spotify).status)
+	}
+
+	// The NL action routes to the same start path.
+	r := sampleSpotify()
+	mm2, cmd2 := r.runAgentCommand(agent.Command{Action: agent.ActionShuffleAI})
+	if cmd2 == nil || !mm2.(Spotify).recommending {
+		t.Error("ActionShuffleAI should start smart shuffling")
+	}
+}
+
+func TestSampleTracksSpread(t *testing.T) {
+	ts := make([]spotify.Track, 100)
+	for i := range ts {
+		ts[i].Title = string(rune('a' + i%26))
+	}
+	got := sampleTracks(ts, 10)
+	if len(got) != 10 {
+		t.Fatalf("sampleTracks(100, 10) len = %d, want 10", len(got))
+	}
+	if len(sampleTracks(ts[:5], 10)) != 5 {
+		t.Error("sampleTracks should return all when fewer than n")
+	}
+	if trackKey("Redbone", "Childish Gambino, Someone") != "redbone|childish gambino" {
+		t.Errorf("trackKey should lowercase and keep the primary artist, got %q", trackKey("Redbone", "Childish Gambino, Someone"))
 	}
 }
 

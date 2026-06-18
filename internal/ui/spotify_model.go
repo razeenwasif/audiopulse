@@ -408,6 +408,14 @@ type recommendMsg struct {
 	err    error
 }
 
+// smartShuffleMsg carries the resolved queue for a smart shuffle of the playlist
+// named source: similar songs that were not already in it.
+type smartShuffleMsg struct {
+	source string
+	tracks []spotify.Track
+	err    error
+}
+
 // chatTurn is one line of the library-chat transcript.
 type chatTurn struct {
 	who  string // "you" | "ai"
@@ -1137,6 +1145,99 @@ func (m Spotify) recommendCmd(query string) tea.Cmd {
 		}
 		return recommendMsg{query: query, tracks: tracks}
 	}
+}
+
+// maxShuffleSeed bounds how many of the playlist's tracks are sent to the model
+// as the taste seed for a smart shuffle (sampled evenly across the list, so a
+// long playlist still fits one prompt while staying representative).
+const maxShuffleSeed = 40
+
+// smartShuffleCmd builds a from-scratch "smart shuffle" of seedTracks (the
+// playlist the user is viewing): it samples them as a taste seed, asks the model
+// for similar songs that are NOT already in the list, resolves each to a playable
+// track via search, and drops any that turn out to be in the original list.
+// sourceName labels the resulting queue.
+func (m Spotify) smartShuffleCmd(seedTracks []spotify.Track, sourceName string) tea.Cmd {
+	ag := m.agent
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		// Exclude everything already in the playlist — by id (exact) and by a
+		// normalized title|artist key (catches the same song re-resolved to a
+		// different release id by search).
+		excludeID := make(map[zspotify.ID]bool, len(seedTracks))
+		excludeKey := make(map[string]bool, len(seedTracks))
+		for _, t := range seedTracks {
+			if t.ID != "" {
+				excludeID[t.ID] = true
+			}
+			excludeKey[trackKey(t.Title, t.Artist)] = true
+		}
+
+		var seed []string
+		for _, t := range sampleTracks(seedTracks, maxShuffleSeed) {
+			seed = append(seed, trackLabel(t))
+		}
+
+		sugs, err := ag.SmartShuffle(ctx, seed, 14)
+		if err != nil {
+			return smartShuffleMsg{source: sourceName, err: err}
+		}
+		var tracks []spotify.Track
+		seen := make(map[zspotify.ID]bool)
+		for _, s := range sugs {
+			q := s.Title
+			if s.Artist != "" {
+				q += " " + s.Artist
+			}
+			res, err := client.Search(ctx, q)
+			if err != nil || len(res) == 0 {
+				continue
+			}
+			t := res[0]
+			if t.ID == "" || seen[t.ID] || excludeID[t.ID] || excludeKey[trackKey(t.Title, t.Artist)] {
+				continue
+			}
+			seen[t.ID] = true
+			tracks = append(tracks, t)
+		}
+		return smartShuffleMsg{source: sourceName, tracks: tracks}
+	}
+}
+
+// trackLabel is the "Title — Artist" seed form used for recommendation prompts.
+func trackLabel(t spotify.Track) string {
+	if t.Artist == "" {
+		return t.Title
+	}
+	return t.Title + " — " + t.Artist
+}
+
+// trackKey normalizes a title/artist pair into a dedupe/exclusion key
+// (case-insensitive, primary artist only).
+func trackKey(title, artist string) string {
+	artist = strings.SplitN(artist, ",", 2)[0]
+	return strings.ToLower(strings.TrimSpace(title)) + "|" + strings.ToLower(strings.TrimSpace(artist))
+}
+
+// sampleTracks returns up to n tracks spread evenly across ts (a representative
+// slice of a long list, not just the head).
+func sampleTracks(ts []spotify.Track, n int) []spotify.Track {
+	total := len(ts)
+	if n <= 0 || total == 0 {
+		return nil
+	}
+	if total <= n {
+		return ts
+	}
+	step := float64(total) / float64(n)
+	out := make([]spotify.Track, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, ts[int(float64(i)*step)])
+	}
+	return out
 }
 
 // answerCmd retrieves grounding context from the index and asks the model a

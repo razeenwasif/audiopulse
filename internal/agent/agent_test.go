@@ -82,6 +82,7 @@ func TestParseCommandNewActions(t *testing.T) {
 		{`{"action":"ask","query":"how many radiohead songs"}`, Command{Action: ActionAsk, Query: "how many radiohead songs", Repeat: "off"}},
 		{`{"action":"ask","query":""}`, Command{Action: ActionUnknown, Repeat: "off"}}, // empty question → unknown
 		{`{"action":"reindex"}`, Command{Action: ActionReindex, Repeat: "off"}},
+		{`{"action":"smart_shuffle","query":""}`, Command{Action: ActionShuffleAI, Repeat: "off"}},
 	}
 	for _, c := range cases {
 		got, err := parseCommand(c.content)
@@ -135,6 +136,8 @@ func TestPickModel(t *testing.T) {
 		{"configured wins", []string{"llama3", "gemma3:4b"}, "mistral", "mistral"},
 		{"prefers gemma", []string{"llama3:latest", "gemma3:12b", "qwen2"}, "", "gemma3:12b"},
 		{"falls back to first", []string{"llama3:latest", "qwen2"}, "", "llama3:latest"},
+		{"skips embedding gemma", []string{"embeddinggemma:latest", "gemma3:latest"}, "", "gemma3:latest"},
+		{"skips embedders in fallback", []string{"nomic-embed-text:latest", "llama3:latest"}, "", "llama3:latest"},
 		{"none available", nil, "", ""},
 	}
 	for _, c := range cases {

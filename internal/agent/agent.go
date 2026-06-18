@@ -38,9 +38,10 @@ const (
 	ActionShuffle   Action = "shuffle"
 	ActionRepeat    Action = "repeat"
 	ActionVolume    Action = "volume"
-	ActionRecommend Action = "recommend" // suggest tracks (RAG over the library)
-	ActionAsk       Action = "ask"       // answer a question about the library
-	ActionReindex   Action = "reindex"   // rebuild the library RAG index
+	ActionRecommend Action = "recommend"     // suggest tracks (RAG over the library)
+	ActionShuffleAI Action = "smart_shuffle" // queue similar songs not in the current playlist
+	ActionAsk       Action = "ask"           // answer a question about the library
+	ActionReindex   Action = "reindex"       // rebuild the library RAG index
 	ActionUnknown   Action = "unknown"
 )
 
@@ -50,7 +51,7 @@ var validActions = map[Action]bool{
 	ActionPlay: true, ActionPause: true, ActionResume: true,
 	ActionNext: true, ActionPrevious: true, ActionShuffle: true,
 	ActionRepeat: true, ActionVolume: true,
-	ActionRecommend: true, ActionAsk: true, ActionReindex: true,
+	ActionRecommend: true, ActionShuffleAI: true, ActionAsk: true, ActionReindex: true,
 }
 
 // Command is the structured result of interpreting an utterance. Only the
@@ -130,20 +131,32 @@ func (c *Client) listModels(ctx context.Context) ([]string, error) {
 }
 
 // pickModel chooses which model to use: the configured one if set, else the
-// first installed model whose name mentions gemma, else the first model at all.
+// first installed gemma* chat model, else the first non-embedding model.
+// Embedding-only models (e.g. nomic-embed-text, embeddinggemma) can't serve
+// /api/chat — they 400 — so they are never auto-selected even though
+// "embeddinggemma" contains "gemma".
 func pickModel(available []string, configured string) string {
 	if configured != "" {
 		return configured
 	}
 	for _, m := range available {
-		if strings.Contains(strings.ToLower(m), "gemma") {
+		l := strings.ToLower(m)
+		if strings.Contains(l, "gemma") && !isEmbeddingModel(l) {
 			return m
 		}
 	}
-	if len(available) > 0 {
-		return available[0]
+	for _, m := range available {
+		if !isEmbeddingModel(strings.ToLower(m)) {
+			return m
+		}
 	}
 	return ""
+}
+
+// isEmbeddingModel reports whether a model name looks like an embedding model,
+// which only serves /api/embed (not /api/chat).
+func isEmbeddingModel(lowerName string) bool {
+	return strings.Contains(lowerName, "embed")
 }
 
 // resolveModel returns the model to query, auto-detecting and caching it when
@@ -373,6 +386,45 @@ Return ONLY a JSON object: {"suggestions":[{"title":"...","artist":"..."}, ...]}
 	return parseSuggestions(content), nil
 }
 
+// SmartShuffle is a from-scratch "smart shuffle": given the tracks in a playlist
+// (seed, as "Title — Artist" lines), it suggests up to n OTHER songs that fit the
+// same vibe but are not in the playlist. Unlike Recommend it has no free-text
+// request — the playlist itself is the whole prompt — and it leans harder on
+// "similar but new" with more variety (higher temperature). The caller resolves
+// each suggestion to a playable track and drops any that are in fact already in
+// the playlist, so the model only needs to avoid the obvious overlaps.
+func (c *Client) SmartShuffle(ctx context.Context, seed []string, n int) ([]Suggestion, error) {
+	if n <= 0 {
+		n = 12
+	}
+	var b strings.Builder
+	b.WriteString("You build a \"smart shuffle\": a queue of songs that fit a playlist's vibe but are NOT already in it.\n")
+	fmt.Fprintf(&b, "Below are songs from the user's playlist. Suggest exactly %d OTHER songs in the same genres, era, and mood — songs a fan of this playlist would love.\n", n)
+	b.WriteString("Hard rules:\n")
+	b.WriteString("- Do NOT suggest any song that already appears in the list below.\n")
+	b.WriteString("- Suggest real, findable songs by real artists; match the playlist's style, don't wander into unrelated genres.\n")
+	b.WriteString("- Favour variety — avoid using the same artist more than twice.\n")
+	if len(seed) > 0 {
+		b.WriteString("\nThe playlist:\n")
+		for _, s := range seed {
+			b.WriteString("- ")
+			b.WriteString(s)
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString(`
+Return ONLY a JSON object: {"suggestions":[{"title":"...","artist":"..."}, ...]}.`)
+
+	content, err := c.chat(ctx, []chatMessage{
+		{Role: "system", Content: "You recommend real songs as strict JSON. No commentary."},
+		{Role: "user", Content: b.String()},
+	}, true, 0.7)
+	if err != nil {
+		return nil, err
+	}
+	return parseSuggestions(content), nil
+}
+
 // parseSuggestions extracts the suggestion list from a model JSON reply. Small
 // models are inconsistent here — they return {"suggestions":[…]}, a bare array,
 // or rename the key/fields — so this tolerates all of those, plus stray prose.
@@ -552,7 +604,7 @@ func promptMessages() []chatMessage {
 	const system = `You convert a user's music request into ONE JSON object and nothing else.
 
 Schema (always include every field):
-{"action": one of "play","pause","resume","next","previous","shuffle","repeat","volume","recommend","ask","reindex","unknown",
+{"action": one of "play","pause","resume","next","previous","shuffle","repeat","volume","recommend","smart_shuffle","ask","reindex","unknown",
  "query": string — for "play": the exact song/artist to play; for "recommend": the vibe/seed; for "ask": the question; otherwise "",
  "on": boolean — for "shuffle": true to enable, false to disable,
  "repeat": one of "off","all","one" — only for "repeat",
@@ -561,6 +613,7 @@ Schema (always include every field):
 Rules:
 - "play X" / "put on X" / "I want to hear X" -> action "play", query "X" (a SPECIFIC song or artist).
 - "play something like X" / "recommend X" / "suggest some Y" / "songs like Z" / "make me a playlist for studying" / "music for working out" -> action "recommend", query = the vibe or seed (NOT "play").
+- "smart shuffle" / "smart-shuffle this" / "shuffle in similar songs" / "shuffle with recommendations" / "add songs like this playlist" -> action "smart_shuffle", query "" (it works on the playlist already open).
 - A library QUESTION ("how many X songs do I have", "what playlists do I have", "do I have any Y", "which album…") -> action "ask", query = the question.
 - "reindex" / "rebuild the library index" / "refresh my library" -> action "reindex".
 - "skip" / "next" / "next song" -> "next". "go back" / "previous" / "last song" -> "previous".
@@ -575,6 +628,7 @@ Output only the JSON object.`
 		{"play bohemian rhapsody by queen", `{"action":"play","query":"Bohemian Rhapsody Queen","on":false,"repeat":"off","volume":0}`},
 		{"play something like daft punk", `{"action":"recommend","query":"like Daft Punk","on":false,"repeat":"off","volume":0}`},
 		{"recommend some chill focus music", `{"action":"recommend","query":"chill focus music","on":false,"repeat":"off","volume":0}`},
+		{"smart shuffle this playlist", `{"action":"smart_shuffle","query":"","on":false,"repeat":"off","volume":0}`},
 		{"how many radiohead songs do i have", `{"action":"ask","query":"how many radiohead songs do i have","on":false,"repeat":"off","volume":0}`},
 		{"rebuild the library index", `{"action":"reindex","query":"","on":false,"repeat":"off","volume":0}`},
 		{"skip this one", `{"action":"next","query":"","on":false,"repeat":"off","volume":0}`},
