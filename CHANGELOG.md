@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Create a playlist by asking** — tell the assistant (`:` or voice) *"create a
+  playlist of the top classics from the 90s to early 2000s"* and it curates a
+  themed tracklist with a local model, **creates and saves a real Spotify
+  playlist** on your account, adds the songs (resolved via Search), drops it into
+  your sidebar, and starts playing. A persistent counterpart to *recommend* (which
+  only plays a temporary queue). Reuses the `playlist-modify-*` scopes added for
+  add-to-playlist — no new permission.
+- **Add to playlist (`P`)** — save the selected (or currently playing) track to a
+  playlist you choose from a floating picker. The picker offers **♥ Liked Songs**
+  first (routed to the saved-tracks endpoint, since it isn't a playlist), then the
+  playlists you can edit (owned or collaborative), so the save never 403s. Adds the
+  `playlist-modify-public` / `playlist-modify-private` scopes — existing users
+  re-authorize once on next launch (handled automatically by the scope
+  fingerprint; see ADR-0012).
 - **Smart shuffle (`S`)** — a from-scratch recommendation shuffle. With a playlist
   (or any track list) open, `S` builds a fresh queue of songs that fit that
   playlist's vibe but **aren't already in it**, then plays it. The open list is

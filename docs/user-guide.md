@@ -64,7 +64,8 @@ A complete tour of AudioPulse's interface and controls.
 **Controls:** `tab`/`shift+tab` cycle the focused panel (Library → Music → Podcasts → Lyrics);
 `↑↓`/`j`/`k` move; `enter` opens a library entry, plays the selected track, opens
 a show's episodes / plays an episode (Podcasts), or — on the Lyrics panel — opens
-the full-lyrics pane; `a` adds the selected track to the play queue; `L`
+the full-lyrics pane; `a` adds the selected track to the play queue; `P` **adds the selected/playing
+track to a playlist you pick**; `L`
 likes/unlikes the selected or playing track (`♥`); `F` unfollows the highlighted
 show; `esc` backs out of a show's episodes; `space` play/pause;
 `n`/`b` next/prev; `←`/`→` seek; `+`/`-` volume; `s` shuffle; `S` **smart
@@ -92,6 +93,16 @@ pointer; click a library entry to open it; click a track to play it; click the
 lyrics panel to focus it; click or drag the progress bar to seek; click the
 play/pause area to toggle.
 
+**Save a track (`P`):** press `P` to add the **selected** track (or, if no track
+row is focused, the **currently playing** one) to **Liked Songs or a playlist**. A
+picker floats up with **♥ Liked Songs** first, then the playlists you can edit —
+the ones you **own** or that are **collaborative** — and `↑`/`↓` choose, `↵`
+saves, `esc` cancels. (Followed playlists you can't edit are left out so the save
+never fails.) Liked Songs is the saved-tracks library, not a playlist, so it uses
+its own endpoint; the dedicated **`L`** key still toggles it directly. The first
+time you use `P` after updating, AudioPulse re-authorizes once to gain the
+playlist-edit permission, then never again.
+
 **Spotlight search:** press `/` for a floating, macOS-Spotlight-style search box
 that overlays the UI. Type and results update live; `↑`/`↓` select a result,
 `enter` plays it (and loads the results into the center panel), and `esc` closes
@@ -117,6 +128,16 @@ recommendation API is unavailable to new apps, so this runs locally from your
 library. Say *"reindex my library"* after adding playlists. Needs an embedding
 model: `ollama pull nomic-embed-text`. See
 [Configuration → Library recommendations](configuration.md#library-recommendations-rag).
+
+**Create a playlist by asking:** tell the assistant *"create a playlist of the
+top classics from the 90s to early 2000s"*, *"make me a playlist for a rainy
+Sunday"*, or *"build a playlist of upbeat workout songs"* and AudioPulse curates a
+themed tracklist locally, **creates and saves a real playlist** on your Spotify
+account, adds the songs (matched via Search), drops it into your sidebar, and
+starts playing. This is the persistent sibling of *recommend* — "recommend" just
+plays a temporary queue, while "create/make/save a playlist" actually saves one
+you'll find in Spotify afterwards. It works by voice too. (Don't want it? Delete
+it from Spotify like any playlist.)
 
 **Smart shuffle (`S`):** open a playlist (or Liked Songs / any track list), then
 press `S` to build a *smart shuffle* — a fresh queue of songs that **fit that

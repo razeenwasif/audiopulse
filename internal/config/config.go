@@ -31,6 +31,8 @@ var Scopes = []string{
 	"user-read-email",
 	"playlist-read-private",
 	"playlist-read-collaborative",
+	"playlist-modify-public",  // add tracks to your public playlists
+	"playlist-modify-private", // add tracks to your private playlists
 	"user-library-read",
 	"user-library-modify", // like/unlike tracks, follow/unfollow shows
 	"user-read-playback-state",

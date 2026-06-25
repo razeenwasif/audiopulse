@@ -41,6 +41,18 @@ all its rows liked, and the playing track's state is checked on each track chang
 isn't reachable yet (the pane only lists already-followed shows) — that arrives
 with show search.
 
+## Update (2026-06-18): add to playlist
+
+The same mechanism now backs **adding a track to a playlist** (`P`). `config.Scopes`
+gains `playlist-modify-public` and `playlist-modify-private`, so existing users
+get one more one-time re-auth (the fingerprint handles it). The wrapper's
+`AddTrackToPlaylist` uses the library's typed `AddTracksToPlaylist` (no raw HTTP
+needed this time). `Playlists()` now also returns each playlist's owner id and
+collaborative flag; the UI marks a playlist **editable** when the user owns it or
+it's collaborative (using `MeID`), and the `P` picker offers only those — so the
+user never picks a playlist the API would 403 on. `P` targets the selected music
+track (else the playing track), mirroring `L`.
+
 ## Consequences
 
 **Positive**

@@ -38,10 +38,11 @@ const (
 	ActionShuffle   Action = "shuffle"
 	ActionRepeat    Action = "repeat"
 	ActionVolume    Action = "volume"
-	ActionRecommend Action = "recommend"     // suggest tracks (RAG over the library)
-	ActionShuffleAI Action = "smart_shuffle" // queue similar songs not in the current playlist
-	ActionAsk       Action = "ask"           // answer a question about the library
-	ActionReindex   Action = "reindex"       // rebuild the library RAG index
+	ActionRecommend Action = "recommend"       // suggest tracks (RAG over the library)
+	ActionShuffleAI Action = "smart_shuffle"   // queue similar songs not in the current playlist
+	ActionCreatePL  Action = "create_playlist" // curate + save a themed playlist
+	ActionAsk       Action = "ask"             // answer a question about the library
+	ActionReindex   Action = "reindex"         // rebuild the library RAG index
 	ActionUnknown   Action = "unknown"
 )
 
@@ -51,7 +52,8 @@ var validActions = map[Action]bool{
 	ActionPlay: true, ActionPause: true, ActionResume: true,
 	ActionNext: true, ActionPrevious: true, ActionShuffle: true,
 	ActionRepeat: true, ActionVolume: true,
-	ActionRecommend: true, ActionShuffleAI: true, ActionAsk: true, ActionReindex: true,
+	ActionRecommend: true, ActionShuffleAI: true, ActionCreatePL: true,
+	ActionAsk: true, ActionReindex: true,
 }
 
 // Command is the structured result of interpreting an utterance. Only the
@@ -425,6 +427,62 @@ Return ONLY a JSON object: {"suggestions":[{"title":"...","artist":"..."}, ...]}
 	return parseSuggestions(content), nil
 }
 
+// BuildPlaylist curates a themed playlist for a request ("top classics from the
+// 90s to early 2000s", "rainy day jazz"): it returns a short playlist name plus
+// up to n real songs that fit the theme, for the caller to resolve via Search,
+// create as a playlist, and add. taste is an optional taste signal (may be nil).
+func (c *Client) BuildPlaylist(ctx context.Context, request string, taste []string, n int) (string, []Suggestion, error) {
+	if n <= 0 {
+		n = 25
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are a music curator. Build a themed playlist of exactly %d real songs for this request:\n", n)
+	fmt.Fprintf(&b, "%q\n", strings.TrimSpace(request))
+	b.WriteString("Pick well-known, findable songs by real artists that genuinely fit the theme (genre, era, mood). Respect any era/decade or genre constraints in the request.\n")
+	b.WriteString("Favour a variety of artists — avoid using the same artist more than twice. Also invent a short, catchy playlist name (3–5 words).\n")
+	if len(taste) > 0 {
+		b.WriteString("\nThe user's taste, only as a gentle tie-breaker (do NOT force these in or drift off-theme):\n")
+		for _, t := range taste {
+			b.WriteString("- ")
+			b.WriteString(t)
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString(`
+Return ONLY a JSON object: {"name":"...","suggestions":[{"title":"...","artist":"..."}, ...]}.`)
+
+	content, err := c.chat(ctx, []chatMessage{
+		{Role: "system", Content: "You are a music curator. Output strict JSON only, no commentary."},
+		{Role: "user", Content: b.String()},
+	}, true, 0.6)
+	if err != nil {
+		return "", nil, err
+	}
+	name, sugs := parsePlaylist(content)
+	return name, sugs, nil
+}
+
+// parsePlaylist extracts a playlist name and the suggestion list from a curator
+// JSON reply. The list reuses the lenient parseSuggestions; the name is read
+// from the first plausible top-level string key (blank if absent — the caller
+// supplies a fallback).
+func parsePlaylist(content string) (string, []Suggestion) {
+	name := ""
+	if raw := firstJSONSpan(content); strings.HasPrefix(strings.TrimSpace(raw), "{") {
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(raw), &obj) == nil {
+			for _, k := range []string{"name", "playlist_name", "playlist", "title"} {
+				var s string
+				if v, ok := obj[k]; ok && json.Unmarshal(v, &s) == nil && strings.TrimSpace(s) != "" {
+					name = strings.TrimSpace(s)
+					break
+				}
+			}
+		}
+	}
+	return name, parseSuggestions(content)
+}
+
 // parseSuggestions extracts the suggestion list from a model JSON reply. Small
 // models are inconsistent here — they return {"suggestions":[…]}, a bare array,
 // or rename the key/fields — so this tolerates all of those, plus stray prose.
@@ -569,7 +627,7 @@ func normalize(c Command) Command {
 		c.Volume = 100
 	}
 	// Actions that need a target are meaningless without one.
-	if (c.Action == ActionPlay || c.Action == ActionAsk) && c.Query == "" {
+	if (c.Action == ActionPlay || c.Action == ActionAsk || c.Action == ActionCreatePL) && c.Query == "" {
 		c.Action = ActionUnknown
 	}
 	return c
@@ -604,15 +662,16 @@ func promptMessages() []chatMessage {
 	const system = `You convert a user's music request into ONE JSON object and nothing else.
 
 Schema (always include every field):
-{"action": one of "play","pause","resume","next","previous","shuffle","repeat","volume","recommend","smart_shuffle","ask","reindex","unknown",
- "query": string — for "play": the exact song/artist to play; for "recommend": the vibe/seed; for "ask": the question; otherwise "",
+{"action": one of "play","pause","resume","next","previous","shuffle","repeat","volume","recommend","smart_shuffle","create_playlist","ask","reindex","unknown",
+ "query": string — for "play": the exact song/artist to play; for "recommend": the vibe/seed; for "create_playlist": the theme/description; for "ask": the question; otherwise "",
  "on": boolean — for "shuffle": true to enable, false to disable,
  "repeat": one of "off","all","one" — only for "repeat",
  "volume": integer 0-100 — only for "volume"}
 
 Rules:
 - "play X" / "put on X" / "I want to hear X" -> action "play", query "X" (a SPECIFIC song or artist).
-- "play something like X" / "recommend X" / "suggest some Y" / "songs like Z" / "make me a playlist for studying" / "music for working out" -> action "recommend", query = the vibe or seed (NOT "play").
+- "play something like X" / "recommend X" / "suggest some Y" / "songs like Z" / "music for working out" -> action "recommend", query = the vibe or seed (NOT "play"). This just plays a temporary queue.
+- "create a playlist of X" / "make me a playlist of/for X" / "build a playlist of Z" / "save a playlist of …" -> action "create_playlist", query = the theme/description of the music (e.g. "top classics from the 90s to early 2000s"). This creates and SAVES a real playlist.
 - "smart shuffle" / "smart-shuffle this" / "shuffle in similar songs" / "shuffle with recommendations" / "add songs like this playlist" -> action "smart_shuffle", query "" (it works on the playlist already open).
 - A library QUESTION ("how many X songs do I have", "what playlists do I have", "do I have any Y", "which album…") -> action "ask", query = the question.
 - "reindex" / "rebuild the library index" / "refresh my library" -> action "reindex".
@@ -629,6 +688,7 @@ Output only the JSON object.`
 		{"play something like daft punk", `{"action":"recommend","query":"like Daft Punk","on":false,"repeat":"off","volume":0}`},
 		{"recommend some chill focus music", `{"action":"recommend","query":"chill focus music","on":false,"repeat":"off","volume":0}`},
 		{"smart shuffle this playlist", `{"action":"smart_shuffle","query":"","on":false,"repeat":"off","volume":0}`},
+		{"create a playlist of the top classics from the 90s to early 2000s", `{"action":"create_playlist","query":"top classics from the 90s to early 2000s","on":false,"repeat":"off","volume":0}`},
 		{"how many radiohead songs do i have", `{"action":"ask","query":"how many radiohead songs do i have","on":false,"repeat":"off","volume":0}`},
 		{"rebuild the library index", `{"action":"reindex","query":"","on":false,"repeat":"off","volume":0}`},
 		{"skip this one", `{"action":"next","query":"","on":false,"repeat":"off","volume":0}`},

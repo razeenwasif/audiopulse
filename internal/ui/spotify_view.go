@@ -101,6 +101,14 @@ func (m Spotify) View() string {
 		out = overlay(out, box, max0(x), max0(y))
 	}
 
+	// Float the add-to-playlist picker, centered.
+	if m.addOpen {
+		box := m.renderAddModal()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
 	// Float the keybinding cheatsheet, centered.
 	if m.showHelp {
 		box := m.renderCheatsheet()
@@ -219,6 +227,7 @@ func (m Spotify) renderCheatsheet() string {
 		{"g / G", "jump to top / bottom"},
 		{"enter", "open playlist/show · play track/episode · expand lyrics"},
 		{"a", "add the selected track to the queue"},
+		{"P", "add the selected / playing track to a playlist"},
 		{"L", "like / unlike the selected or playing track"},
 		{"F", "unfollow the highlighted podcast"},
 		{"e", "export your library to local files (spotDL)"},
@@ -230,7 +239,7 @@ func (m Spotify) renderCheatsheet() string {
 		{"S", "smart shuffle — queue similar songs not in this playlist"},
 		{"r / R", "loop all / loop one"},
 		{"/", "search (Spotlight)"},
-		{":", "AI assistant — control · recommend · ask about your library"},
+		{":", "AI assistant — control · recommend · create playlists · ask about your library"},
 		{"v", "speak a request (voice control, offline Vosk)"},
 		{"esc", "back · close overlay"},
 		{"?", "toggle this help"},
@@ -331,7 +340,7 @@ func (m Spotify) renderAgentPrompt() string {
 	case m.agentErr != nil:
 		status = lipgloss.NewStyle().Foreground(colorErr).Render(truncate(m.agentErr.Error(), innerW))
 	default:
-		status = faint.Render("play · recommend like X · ask about your library · shuffle/skip/pause")
+		status = faint.Render("play · recommend · create a playlist of … · ask about your library · skip")
 	}
 	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Ask AI  (local Ollama)")
 	hint := faint.Render("↵ send    esc close")
@@ -437,6 +446,51 @@ func (m Spotify) renderChatModal() string {
 
 	parts := append([]string{header, sep}, rows...)
 	parts = append(parts, sep, input, hint)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
+	return solidify(box, spotlightBGCode)
+}
+
+// renderAddModal builds the floating playlist picker for "add to playlist" (P).
+func (m Spotify) renderAddModal() string {
+	boxW := m.addModalWidth()
+	innerW := boxW - 4
+
+	header := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Add to…")
+	track := lipgloss.NewStyle().Foreground(colorMuted).Render(truncate(m.addTrackLbl, innerW))
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", innerW))
+
+	bodyH := m.addBodyH()
+	start := m.addStart()
+	end := start + bodyH
+	if end > len(m.addLists) {
+		end = len(m.addLists)
+	}
+	sel := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true)
+	dim := lipgloss.NewStyle().Foreground(colorText)
+	rows := make([]string, 0, bodyH)
+	for i := start; i < end; i++ {
+		name := truncate(m.addLists[i].name, innerW-2)
+		if i == m.addCursor {
+			rows = append(rows, sel.Render("▸ "+name))
+		} else {
+			rows = append(rows, dim.Render("  "+name))
+		}
+	}
+	for len(rows) < bodyH {
+		rows = append(rows, " ")
+	}
+
+	hintText := "↵ add · ↑↓ choose · esc cancel"
+	if m.addBusy {
+		hintText = "adding…"
+	}
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render(truncate(hintText, innerW))
+
+	parts := append([]string{header, track, sep}, rows...)
+	parts = append(parts, sep, hint)
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
 		Padding(1, 2).Width(boxW).
@@ -1404,6 +1458,7 @@ func (m Spotify) renderSpotifyHelp() string {
 		key("↑↓") + dim(" move"),
 		key("enter") + dim(" open/play"),
 		key("a") + dim(" queue"),
+		key("P") + dim(" +playlist"),
 		key("space") + dim(" pause"),
 		key("n/b") + dim(" next/prev"),
 		key("←→") + dim(" seek"),

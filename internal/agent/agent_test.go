@@ -83,6 +83,8 @@ func TestParseCommandNewActions(t *testing.T) {
 		{`{"action":"ask","query":""}`, Command{Action: ActionUnknown, Repeat: "off"}}, // empty question → unknown
 		{`{"action":"reindex"}`, Command{Action: ActionReindex, Repeat: "off"}},
 		{`{"action":"smart_shuffle","query":""}`, Command{Action: ActionShuffleAI, Repeat: "off"}},
+		{`{"action":"create_playlist","query":"90s classics"}`, Command{Action: ActionCreatePL, Query: "90s classics", Repeat: "off"}},
+		{`{"action":"create_playlist","query":""}`, Command{Action: ActionUnknown, Repeat: "off"}}, // no theme → unknown
 	}
 	for _, c := range cases {
 		got, err := parseCommand(c.content)
@@ -123,6 +125,24 @@ func TestParseSuggestions(t *testing.T) {
 	// Prose around the JSON.
 	if got := parseSuggestions("Sure: {\"suggestions\":[{\"title\":\"T\",\"artist\":\"A\"}]} done"); len(got) != 1 {
 		t.Errorf("prose-wrapped object should parse, got %d", len(got))
+	}
+}
+
+func TestParsePlaylist(t *testing.T) {
+	name, sugs := parsePlaylist(`{"name":"  90s Gold  ","suggestions":[{"title":"Smells Like Teen Spirit","artist":"Nirvana"},{"title":"Wonderwall","artist":"Oasis"}]}`)
+	if name != "90s Gold" {
+		t.Errorf("name = %q, want %q", name, "90s Gold")
+	}
+	if len(sugs) != 2 || sugs[0].Title != "Smells Like Teen Spirit" {
+		t.Errorf("suggestions = %+v", sugs)
+	}
+	// A renamed name key + still extracts the list.
+	if n, s := parsePlaylist(`{"playlist_name":"Mix","suggestions":[{"title":"A","artist":"B"}]}`); n != "Mix" || len(s) != 1 {
+		t.Errorf("renamed name key: name=%q sugs=%d", n, len(s))
+	}
+	// No name → blank (caller supplies a fallback), list still parses.
+	if n, s := parsePlaylist(`{"suggestions":[{"title":"A","artist":"B"}]}`); n != "" || len(s) != 1 {
+		t.Errorf("missing name should be blank: name=%q sugs=%d", n, len(s))
 	}
 }
 
