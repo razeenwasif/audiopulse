@@ -606,6 +606,126 @@ func TestSmartShuffleFlow(t *testing.T) {
 	}
 }
 
+func TestAddToPlaylistFlow(t *testing.T) {
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+	// With no editable playlists, the picker still opens — Liked Songs is always
+	// offered as the first (and here only) target.
+	noedit := sampleSpotify()
+	noedit.tracks[0].ID = "trkX"
+	mm, _ := noedit.Update(key("P"))
+	sp := mm.(Spotify)
+	if !sp.addOpen || len(sp.addLists) != 1 || sp.addLists[0].kind != libLiked {
+		t.Fatalf("P should open with Liked Songs even with no playlists (open=%v lists=%d)", sp.addOpen, len(sp.addLists))
+	}
+
+	// With no target track at all, it explains instead of opening.
+	notrack := sampleSpotify()
+	notrack.tracks = nil
+	notrack.state = nil
+	mm, cmd := notrack.Update(key("P"))
+	if cmd != nil || mm.(Spotify).addOpen || !strings.Contains(mm.(Spotify).status, "Select or play") {
+		t.Errorf("P with no target track should explain; status=%q", mm.(Spotify).status)
+	}
+
+	// With an editable playlist + a target track, the picker lists Liked Songs
+	// then the playlist.
+	m := sampleSpotify()
+	m.tracks[0].ID = "trkX"
+	m.trackCursor = 0
+	m.lib[2].editable = true // "Chill Vibes"
+	mm, _ = m.Update(key("P"))
+	sp = mm.(Spotify)
+	if !sp.addOpen || len(sp.addLists) != 2 || sp.addLists[0].kind != libLiked || sp.addTrackID != "trkX" {
+		t.Fatalf("P should open with Liked Songs + 1 playlist (open=%v lists=%d)", sp.addOpen, len(sp.addLists))
+	}
+	if !strings.Contains(sp.View(), "Add to…") {
+		t.Error("open picker should render its header")
+	}
+
+	// Cursor on Liked Songs (0) + enter saves to Liked Songs and updates the ♥.
+	likeSel := sp
+	mm, cmd = likeSel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	saving := mm.(Spotify)
+	if cmd == nil || !saving.addBusy {
+		t.Fatal("enter should start the like and set addBusy")
+	}
+	mm, _ = saving.Update(addedToPlaylistMsg{playlist: "Liked Songs", track: "Midnight City — M83", trackID: "trkX", liked: true})
+	done := mm.(Spotify)
+	if done.addOpen || !done.liked["trkX"] || !strings.Contains(done.status, "Liked Songs") {
+		t.Errorf("Liked Songs save should set the ♥ cache and confirm; status=%q liked=%v", done.status, done.liked["trkX"])
+	}
+
+	// Cursor on the playlist (1) + enter saves to the playlist.
+	plSel := sp
+	plSel.addCursor = 1
+	mm, cmd = plSel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil || !mm.(Spotify).addBusy {
+		t.Error("enter on a playlist should start the add")
+	}
+	mm, _ = mm.(Spotify).Update(addedToPlaylistMsg{playlist: "Chill Vibes", track: "Midnight City — M83", trackID: "trkX"})
+	if d := mm.(Spotify); d.addOpen || !strings.Contains(d.status, "Chill Vibes") {
+		t.Errorf("playlist save should close + confirm; status=%q", d.status)
+	}
+
+	// An error closes the picker and reports it.
+	mm, _ = sp.Update(addedToPlaylistMsg{playlist: "Chill Vibes", err: errors.New("forbidden")})
+	if mm.(Spotify).addOpen || !strings.Contains(mm.(Spotify).status, "Couldn't add") {
+		t.Errorf("add error should close + report; status=%q", mm.(Spotify).status)
+	}
+
+	// esc cancels an open picker without saving.
+	mm, cmd = sp.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil || mm.(Spotify).addOpen {
+		t.Error("esc should cancel the picker")
+	}
+}
+
+func TestCreatePlaylistFlow(t *testing.T) {
+	// ActionCreatePL starts curation in the background.
+	r := sampleSpotify()
+	r.meID = "user1"
+	mm, cmd := r.runAgentCommand(agent.Command{Action: agent.ActionCreatePL, Query: "90s classics"})
+	sp := mm.(Spotify)
+	if cmd == nil || !sp.recommending || !strings.Contains(sp.status, "Curating") {
+		t.Errorf("ActionCreatePL should start curating (busy=%v status=%q)", sp.recommending, sp.status)
+	}
+
+	// A successful result loads + plays the new playlist and adds it to the sidebar.
+	m := sampleSpotify()
+	tracks := []spotify.Track{
+		{Title: "Smells Like Teen Spirit", Artist: "Nirvana", URI: "spotify:track:a"},
+		{Title: "Wonderwall", Artist: "Oasis", URI: "spotify:track:b"},
+	}
+	mm, cmd = m.Update(playlistCreatedMsg{
+		request: "90s classics", name: "90s Gold",
+		playlistID: "pl1", playlistURI: "spotify:playlist:pl1", tracks: tracks,
+	})
+	sp = mm.(Spotify)
+	if cmd == nil || sp.recommending {
+		t.Error("created message should play and clear the busy flag")
+	}
+	if sp.source.title != "90s Gold" || sp.source.contextURI != "spotify:playlist:pl1" || len(sp.tracks) != 2 {
+		t.Errorf("created playlist should load into the center (source=%+v tracks=%d)", sp.source, len(sp.tracks))
+	}
+	if sp.lib[2].name != "90s Gold" || sp.lib[2].kind != libPlaylist || !sp.lib[2].editable {
+		t.Errorf("new playlist should be inserted atop the sidebar playlists, got %+v", sp.lib[2])
+	}
+	if !strings.Contains(sp.status, "Created") {
+		t.Errorf("status should confirm creation, got %q", sp.status)
+	}
+
+	// An error path reports rather than playing.
+	mm, cmd = sampleSpotify().Update(playlistCreatedMsg{request: "x", err: errors.New("boom")})
+	if cmd != nil || !strings.Contains(mm.(Spotify).status, "Couldn't create") {
+		t.Errorf("create error should explain; status=%q", mm.(Spotify).status)
+	}
+
+	if got := defaultPlaylistName("rainy day jazz"); got != "Rainy day jazz" {
+		t.Errorf("defaultPlaylistName = %q", got)
+	}
+}
+
 func TestSampleTracksSpread(t *testing.T) {
 	ts := make([]spotify.Track, 100)
 	for i := range ts {

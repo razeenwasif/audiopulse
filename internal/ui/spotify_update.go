@@ -43,6 +43,9 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.lib = msg.items
+		if msg.meID != "" {
+			m.meID = msg.meID
+		}
 		m.status = ""
 		if len(m.lib) > 0 {
 			return m, m.beginTrackLoad(m.lib[m.libCursor])
@@ -241,6 +244,20 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.liked[msg.id] = msg.saved
 		return m, nil
 
+	case addedToPlaylistMsg:
+		m.addBusy = false
+		m.addOpen = false
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = "Couldn't add to “" + msg.playlist + "”: " + truncateErr(msg.err)
+			return m, nil
+		}
+		if msg.liked && msg.trackID != "" {
+			m.liked[msg.trackID] = true // keep the ♥ indicator in sync
+		}
+		m.status = "Added “" + msg.track + "” to “" + msg.playlist + "”."
+		return m, nil
+
 	case deviceMsg:
 		if msg.id != "" {
 			m.deviceID = msg.id
@@ -408,6 +425,33 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("Smart shuffle — %d fresh songs like “%s”.", len(msg.tracks), msg.source)
 		return m, m.playSelectedCmd()
 
+	case playlistCreatedMsg:
+		m.recommending = false
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = "Couldn't create the playlist: " + truncateErr(msg.err)
+			return m, nil
+		}
+		// Show the new playlist in the center, play it, and add it to the sidebar
+		// (newest first) so it's browsable without a full library reload.
+		m.tracks = msg.tracks
+		m.source = trackSource{title: msg.name, contextURI: msg.playlistURI}
+		m.trackCursor = 0
+		m.centerTab = "music"
+		m.focus = panelTracks
+		ins := 0
+		for ins < len(m.lib) && m.lib[ins].kind != libPlaylist {
+			ins++
+		}
+		item := libItem{kind: libPlaylist, name: msg.name, plID: msg.playlistID, plURI: msg.playlistURI, count: len(msg.tracks), editable: true}
+		nl := make([]libItem, 0, len(m.lib)+1)
+		nl = append(nl, m.lib[:ins]...)
+		nl = append(nl, item)
+		nl = append(nl, m.lib[ins:]...)
+		m.lib = nl
+		m.status = fmt.Sprintf("Created “%s” (%d songs) — saved to your library, now playing.", msg.name, len(msg.tracks))
+		return m, m.playSelectedCmd()
+
 	case agentPlayMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -488,6 +532,13 @@ func (m Spotify) runAgentCommand(cmd agent.Command) (tea.Model, tea.Cmd) {
 		return m, m.recommendCmd(cmd.Query)
 	case agent.ActionShuffleAI:
 		return m.startSmartShuffle()
+	case agent.ActionCreatePL:
+		if m.recommending {
+			return m, nil
+		}
+		m.recommending = true
+		m.status = "Curating “" + cmd.Query + "” and saving it as a playlist…"
+		return m, m.createPlaylistCmd(cmd.Query)
 	case agent.ActionReindex:
 		return m.startIndex(nil)
 	case agent.ActionAsk:
@@ -528,6 +579,26 @@ func (m Spotify) startSmartShuffle() (tea.Model, tea.Cmd) {
 	m.recommending = true
 	m.status = "Smart shuffling “" + name + "” — finding similar songs…"
 	return m, m.smartShuffleCmd(m.tracks, name)
+}
+
+// openAddToPlaylist opens the playlist picker for the selected (or playing)
+// track. It needs a target track and at least one editable playlist.
+func (m Spotify) openAddToPlaylist() (tea.Model, tea.Cmd) {
+	id, label, ok := m.saveTarget()
+	if !ok {
+		m.status = "Select or play a track first, then press P to save it."
+		return m, nil
+	}
+	// Liked Songs is always offered first (its own endpoint), then the playlists
+	// the user can edit.
+	lists := append([]libItem{{kind: libLiked, name: "♥ Liked Songs"}}, m.editablePlaylists()...)
+	m.addOpen = true
+	m.addBusy = false
+	m.addCursor = 0
+	m.addTrackID = id
+	m.addTrackLbl = label
+	m.addLists = lists
+	return m, nil
 }
 
 // startIndex kicks off a background build of the library RAG index, optionally
@@ -651,6 +722,45 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.chatInput, cmd = m.chatInput.Update(msg)
 		return m, cmd
+	}
+
+	// Add-to-playlist picker: navigate the list, enter saves, esc cancels.
+	if m.addOpen {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc", "P":
+			m.addOpen = false
+			return m, nil
+		case "up", "k", "ctrl+p":
+			if m.addCursor > 0 {
+				m.addCursor--
+			}
+			return m, nil
+		case "down", "j", "ctrl+n":
+			if m.addCursor < len(m.addLists)-1 {
+				m.addCursor++
+			}
+			return m, nil
+		case "g", "home":
+			m.addCursor = 0
+			return m, nil
+		case "G", "end":
+			m.addCursor = max0(len(m.addLists) - 1)
+			return m, nil
+		case "enter":
+			if m.addBusy || m.addCursor < 0 || m.addCursor >= len(m.addLists) {
+				return m, nil
+			}
+			pl := m.addLists[m.addCursor]
+			m.addBusy = true
+			m.status = "Adding to “" + pl.name + "”…"
+			if pl.kind == libLiked {
+				return m, m.addToLikedCmd(m.addTrackID, m.addTrackLbl)
+			}
+			return m, m.addToPlaylistCmd(pl.plID, m.addTrackID, pl.name, m.addTrackLbl)
+		}
+		return m, nil
 	}
 
 	// Library export overlay owns the keyboard while active.
@@ -810,6 +920,10 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "♥ Saved to Liked Songs."
 		}
 		return m, m.toggleLikeCmd(id, was)
+
+	case "P":
+		// Add the selected (or playing) track to a playlist you pick.
+		return m.openAddToPlaylist()
 
 	case "F":
 		// Unfollow the highlighted show (the podcast list is your followed shows).

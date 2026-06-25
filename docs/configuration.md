@@ -108,6 +108,16 @@ Spotify's own recommendation API is unavailable to new apps, so suggestions are
 generated locally from your taste and resolved to playable tracks via Search
 ([ADR-0015](adr/0015-library-rag.md)).
 
+### Create a playlist
+
+Ask the assistant to *"create a playlist of the top classics from the 90s to early
+2000s"* (or *"make me a playlist for studying"*) and it curates a themed tracklist
+with the local model, **creates and saves a real playlist** on your account, adds
+the resolved tracks, and plays it. Distinct from *recommend*, which only plays a
+temporary queue. Uses the `playlist-modify-public` / `playlist-modify-private`
+scopes (shared with add-to-playlist; existing users re-authorize once — see
+[ADR-0012](adr/0012-library-mutations.md)). No library index needed.
+
 ### Smart shuffle
 
 Press **`S`** with a playlist (or any track list) open to build a *smart shuffle*:

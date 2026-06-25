@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -62,11 +63,12 @@ const (
 
 // libItem is a row in the left library panel.
 type libItem struct {
-	kind  libKind
-	name  string
-	plID  zspotify.ID
-	plURI zspotify.URI
-	count int
+	kind     libKind
+	name     string
+	plID     zspotify.ID
+	plURI    zspotify.URI
+	count    int
+	editable bool // playlist the user can add to (owned or collaborative)
 }
 
 // trackSource describes what the center list currently shows.
@@ -81,6 +83,7 @@ type Spotify struct {
 	client   *spotify.Client
 	deviceID string
 	user     string
+	meID     string // current user's Spotify id (for creating playlists)
 
 	width, height int
 
@@ -194,6 +197,15 @@ type Spotify struct {
 	pendingCmd   *agent.Command // recommend/ask to run once the index is built
 	recommending bool
 
+	// Add-to-playlist picker (opened with P): choose which of your editable
+	// playlists to save the selected/playing track to.
+	addOpen     bool
+	addCursor   int
+	addTrackID  zspotify.ID
+	addTrackLbl string    // "Title — Artist" of the track being saved (header)
+	addLists    []libItem // editable playlists offered as targets
+	addBusy     bool      // an add request is in flight
+
 	// Voice control (offline Vosk speech-to-text; `v` to talk). The engine loads
 	// its model lazily on first use and is reused; a spoken phrase is transcribed
 	// and fed into the same assistant pipeline as a typed request.
@@ -222,7 +234,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 
 	cfg := config.Load()
 	ask := textinput.New()
-	ask.Placeholder = "play X · recommend like X · ask about your library · skip"
+	ask.Placeholder = "play X · recommend like X · create a playlist of … · ask about your library"
 	ask.Prompt = "✦ "
 	ask.CharLimit = 120
 	ask.PromptStyle = lipgloss.NewStyle().Foreground(colorAccent)
@@ -289,6 +301,7 @@ func (m Spotify) Init() tea.Cmd {
 
 type libraryMsg struct {
 	items []libItem
+	meID  string
 	err   error
 }
 
@@ -333,6 +346,16 @@ type likeMsg struct {
 type savedCheckMsg struct {
 	id    zspotify.ID
 	saved bool
+}
+
+// addedToPlaylistMsg is the result of saving a track to a playlist (or, when
+// liked is set, to Liked Songs).
+type addedToPlaylistMsg struct {
+	playlist string
+	track    string
+	trackID  zspotify.ID
+	liked    bool // target was Liked Songs (reconcile the ♥ cache)
+	err      error
 }
 type searchDebounceMsg struct{ gen int }
 type spotlightResultsMsg struct {
@@ -414,6 +437,16 @@ type smartShuffleMsg struct {
 	source string
 	tracks []spotify.Track
 	err    error
+}
+
+// playlistCreatedMsg reports the result of curating + saving a new playlist.
+type playlistCreatedMsg struct {
+	request     string
+	name        string
+	playlistID  zspotify.ID
+	playlistURI zspotify.URI
+	tracks      []spotify.Track
+	err         error
 }
 
 // chatTurn is one line of the library-chat transcript.
@@ -510,20 +543,25 @@ func (m Spotify) loadLibraryCmd() tea.Cmd {
 		if err != nil {
 			return libraryMsg{err: err}
 		}
+		// The current user owns/can-edit some of these; meID lets us mark which
+		// are valid targets for "add to playlist". A failure here is non-fatal —
+		// editable defaults to false and the picker just shows fewer options.
+		meID, _ := client.MeID(ctx)
 		items := []libItem{
 			{kind: libLiked, name: "Liked Songs"},
 			{kind: libRecent, name: "Recently Played"},
 		}
 		for _, p := range playlists {
 			items = append(items, libItem{
-				kind:  libPlaylist,
-				name:  p.Name,
-				plID:  p.ID,
-				plURI: p.URI,
-				count: p.Count,
+				kind:     libPlaylist,
+				name:     p.Name,
+				plID:     p.ID,
+				plURI:    p.URI,
+				count:    p.Count,
+				editable: p.Collaborative || (meID != "" && p.OwnerID == meID),
 			})
 		}
-		return libraryMsg{items: items}
+		return libraryMsg{items: items, meID: meID}
 	}
 }
 
@@ -1009,6 +1047,85 @@ func (m Spotify) likeTarget() (zspotify.ID, bool) {
 	return "", false
 }
 
+// saveTarget is the track an "add to playlist" applies to: the selected music
+// track if the music pane is focused, else the currently playing track. Returns
+// its id, a "Title — Artist" label, and whether one was found.
+func (m Spotify) saveTarget() (zspotify.ID, string, bool) {
+	if m.focus == panelTracks && m.trackCursor >= 0 && m.trackCursor < len(m.tracks) {
+		if t := m.tracks[m.trackCursor]; t.ID != "" {
+			return t.ID, trackLabel(t), true
+		}
+	}
+	if m.state != nil && m.state.Track != nil && m.state.Track.ID != "" {
+		return m.state.Track.ID, trackLabel(*m.state.Track), true
+	}
+	return "", "", false
+}
+
+// editablePlaylists returns the library's playlists the user can add to.
+func (m Spotify) editablePlaylists() []libItem {
+	var out []libItem
+	for _, it := range m.lib {
+		if it.kind == libPlaylist && it.editable {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// addToPlaylistCmd saves a track to the chosen playlist.
+func (m Spotify) addToPlaylistCmd(playlistID, trackID zspotify.ID, playlistName, trackLbl string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := client.AddTrackToPlaylist(ctx, playlistID, trackID)
+		return addedToPlaylistMsg{playlist: playlistName, track: trackLbl, trackID: trackID, err: err}
+	}
+}
+
+// addToLikedCmd saves a track to Liked Songs (the saved-tracks library, not a
+// playlist — it has its own endpoint), surfaced as the top picker option.
+func (m Spotify) addToLikedCmd(trackID zspotify.ID, trackLbl string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := client.LikeTrack(ctx, trackID)
+		return addedToPlaylistMsg{playlist: "Liked Songs", track: trackLbl, trackID: trackID, liked: true, err: err}
+	}
+}
+
+// addModalWidth / addBodyH size the playlist-picker modal.
+func (m Spotify) addModalWidth() int { return clamp(m.width/2, 40, 72) }
+
+func (m Spotify) addBodyH() int {
+	// box = border(2)+padding(2)+header+sep+body+hint.
+	bh := m.height - 11
+	if bh < 3 {
+		bh = 3
+	}
+	if bh > len(m.addLists) {
+		bh = len(m.addLists)
+	}
+	if bh < 1 {
+		bh = 1
+	}
+	return bh
+}
+
+// addStart is the top index of the visible playlist window, keeping the cursor
+// in view.
+func (m Spotify) addStart() int {
+	bodyH := m.addBodyH()
+	start := 0
+	if m.addCursor >= bodyH {
+		start = m.addCursor - bodyH + 1
+	}
+	maxStart := max0(len(m.addLists) - bodyH)
+	return clamp(start, 0, maxStart)
+}
+
 // gatherExportCmd collects every track URI (Liked Songs + all playlists) to be
 // exported, plus the resolved output directory.
 func (m Spotify) gatherExportCmd() tea.Cmd {
@@ -1205,6 +1322,87 @@ func (m Spotify) smartShuffleCmd(seedTracks []spotify.Track, sourceName string) 
 		}
 		return smartShuffleMsg{source: sourceName, tracks: tracks}
 	}
+}
+
+// createPlaylistCmd curates a themed playlist for the request, creates it on the
+// user's account, resolves the suggested songs via Search and adds them, then
+// returns it (the update loop loads + plays it and adds it to the sidebar).
+func (m Spotify) createPlaylistCmd(request string) tea.Cmd {
+	ag := m.agent
+	client := m.client
+	meID := m.meID
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+		defer cancel()
+
+		if meID == "" { // not cached yet (library still loading) — fetch it
+			if id, err := client.MeID(ctx); err == nil {
+				meID = id
+			}
+		}
+		if meID == "" {
+			return playlistCreatedMsg{request: request, err: errors.New("couldn't determine your Spotify account")}
+		}
+
+		name, sugs, err := ag.BuildPlaylist(ctx, request, nil, 25)
+		if err != nil {
+			return playlistCreatedMsg{request: request, err: err}
+		}
+		if len(sugs) == 0 {
+			return playlistCreatedMsg{request: request, err: errors.New("the model didn't return any songs")}
+		}
+
+		var tracks []spotify.Track
+		var ids []zspotify.ID
+		seen := make(map[zspotify.ID]bool)
+		for _, s := range sugs {
+			q := s.Title
+			if s.Artist != "" {
+				q += " " + s.Artist
+			}
+			res, e := client.Search(ctx, q)
+			if e != nil || len(res) == 0 {
+				continue
+			}
+			t := res[0]
+			if t.ID == "" || seen[t.ID] {
+				continue
+			}
+			seen[t.ID] = true
+			tracks = append(tracks, t)
+			ids = append(ids, t.ID)
+		}
+		if len(ids) == 0 {
+			return playlistCreatedMsg{request: request, name: name, err: errors.New("couldn't find any of the suggested songs")}
+		}
+
+		if strings.TrimSpace(name) == "" {
+			name = defaultPlaylistName(request)
+		}
+		plID, plURI, err := client.CreatePlaylist(ctx, meID, name, "Created by AudioPulse from: "+request, false)
+		if err != nil {
+			return playlistCreatedMsg{request: request, name: name, err: err}
+		}
+		if err := client.AddTracksToPlaylist(ctx, plID, ids); err != nil {
+			return playlistCreatedMsg{request: request, name: name, playlistID: plID, playlistURI: plURI, err: err}
+		}
+		return playlistCreatedMsg{request: request, name: name, playlistID: plID, playlistURI: plURI, tracks: tracks}
+	}
+}
+
+// defaultPlaylistName is the fallback name when the model didn't supply one:
+// the request, capitalized and length-capped.
+func defaultPlaylistName(request string) string {
+	r := strings.TrimSpace(request)
+	if r == "" {
+		return "AudioPulse Mix"
+	}
+	rs := []rune(r)
+	if len(rs) > 60 {
+		rs = rs[:60]
+	}
+	rs[0] = unicode.ToUpper(rs[0])
+	return string(rs)
 }
 
 // trackLabel is the "Title — Artist" seed form used for recommendation prompts.

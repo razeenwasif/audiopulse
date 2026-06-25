@@ -35,10 +35,12 @@ type Track struct {
 
 // Playlist is an entry in the library sidebar.
 type Playlist struct {
-	ID    zspotify.ID
-	URI   zspotify.URI
-	Name  string
-	Count int
+	ID            zspotify.ID
+	URI           zspotify.URI
+	Name          string
+	Count         int
+	OwnerID       string // Spotify user id of the owner
+	Collaborative bool   // collaborative playlists are editable by followers
 }
 
 // Show is a saved podcast.
@@ -108,6 +110,16 @@ func (c *Client) Me(ctx context.Context) (string, error) {
 	return u.ID, nil
 }
 
+// MeID returns the current user's Spotify user id (used to tell which playlists
+// the user owns, and thus can add tracks to).
+func (c *Client) MeID(ctx context.Context) (string, error) {
+	u, err := c.api.CurrentUser(ctx)
+	if err != nil {
+		return "", err
+	}
+	return u.ID, nil
+}
+
 // --- library -----------------------------------------------------------------
 
 // Playlists returns the user's playlists, following pagination so libraries
@@ -121,10 +133,12 @@ func (c *Client) Playlists(ctx context.Context) ([]Playlist, error) {
 	for {
 		for _, p := range page.Playlists {
 			out = append(out, Playlist{
-				ID:    p.ID,
-				URI:   p.URI,
-				Name:  p.Name,
-				Count: int(p.Tracks.Total),
+				ID:            p.ID,
+				URI:           p.URI,
+				Name:          p.Name,
+				Count:         int(p.Tracks.Total),
+				OwnerID:       p.Owner.ID,
+				Collaborative: p.Collaborative,
 			})
 		}
 		if len(out) >= maxLibraryItems {
@@ -463,6 +477,40 @@ func (c *Client) LikeTrack(ctx context.Context, id zspotify.ID) error {
 // UnlikeTrack removes a track from the user's Liked Songs.
 func (c *Client) UnlikeTrack(ctx context.Context, id zspotify.ID) error {
 	return c.api.RemoveTracksFromLibrary(ctx, id)
+}
+
+// AddTrackToPlaylist appends a track to one of the user's playlists. Requires a
+// playlist the user can edit (owned or collaborative) and the playlist-modify-*
+// scopes, else the API returns a permission error.
+func (c *Client) AddTrackToPlaylist(ctx context.Context, playlistID, trackID zspotify.ID) error {
+	_, err := c.api.AddTracksToPlaylist(ctx, playlistID, trackID)
+	return err
+}
+
+// CreatePlaylist creates a new playlist owned by userID (use MeID) and returns
+// its id and URI. public=false makes it private (playlist-modify-private scope).
+func (c *Client) CreatePlaylist(ctx context.Context, userID, name, description string, public bool) (zspotify.ID, zspotify.URI, error) {
+	pl, err := c.api.CreatePlaylistForUser(ctx, userID, name, description, public, false)
+	if err != nil {
+		return "", "", err
+	}
+	return pl.ID, pl.URI, nil
+}
+
+// AddTracksToPlaylist appends multiple tracks to a playlist, chunked to the
+// API's 100-ids-per-request limit.
+func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID zspotify.ID, trackIDs []zspotify.ID) error {
+	const maxPerRequest = 100
+	for i := 0; i < len(trackIDs); i += maxPerRequest {
+		end := i + maxPerRequest
+		if end > len(trackIDs) {
+			end = len(trackIDs)
+		}
+		if _, err := c.api.AddTracksToPlaylist(ctx, playlistID, trackIDs[i:end]...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // TrackSaved reports whether a track is in the user's Liked Songs.
