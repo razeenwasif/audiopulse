@@ -90,10 +90,17 @@ First real-library run surfaced two problems: songs in the wrong genre, and a hu
   buckets, ties broken by rule priority), not first-match on the primary artist —
   so "pop rap" + "dance pop" + "pop" → Pop, and a featured artist's tags can rescue
   an untagged lead. The keyword rule list was also expanded.
-- **"Other" is mostly untagged artists.** ~50% of one test library's artists have
-  *no* Spotify genre tags (game OSTs, vtubers, niche creators); those legitimately
-  fall to "Other". Local-file likes (no track id) can't be playlisted and are
-  counted/reported separately, not silently dropped.
+- **"Other" is mostly untagged artists** — then rescued by an LLM fallback. ~50%
+  of one test library's artists have *no* Spotify genre tags (game OSTs, vtubers,
+  niche creators). For those, the tracks that bucket to "Other" are sent (as
+  "Title — Artist", batched, low-temp) to the **local model**, which picks a genre
+  from the fixed bucket list (`library.BucketNames()`) or leaves them "Other" if
+  unsure. Only confident, in-list answers override; the genre-tag path is
+  authoritative and runs first. On the test library this cut "Other" from 244→37
+  (228 classified in ~30s) with mostly-correct labels. It's best-effort and uses
+  the assistant's chat model (already required to route the request); if the model
+  is unsure or unavailable, tracks simply stay in "Other". Local-file likes (no
+  track id) can't be playlisted and are counted/reported separately, not dropped.
 - **Idempotent re-runs.** A genre whose `"Liked: <Genre>"` playlist already exists
   (owned/collaborative) is **updated** — only songs not already in it are added
   (deduped via `PlaylistTrackIDs`) — instead of creating a duplicate. The preview

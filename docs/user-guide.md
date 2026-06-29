@@ -151,9 +151,11 @@ one-song playlists. The grouping is exact (no AI guessing); the model only
 interprets your request. **Re-running updates the existing "Liked: …" playlists**
 (adding only songs that aren't already in them) rather than duplicating — the
 preview tags which buckets will be updated. A genre is decided by majority vote
-across a track's artists; **artists Spotify hasn't tagged with any genre** (common
-for game soundtracks, indie/niche, and VTuber music) land in "Liked: Other", and
-local-file likes can't be added to playlists (they're reported, not lost).
+across a track's artists; for tracks whose **artists Spotify hasn't tagged with
+any genre** (common for game soundtracks, indie/niche, and VTuber music) the local
+model classifies them by title + artist so they don't all pile into "Liked: Other"
+— anything it's unsure of stays there. Local-file likes can't be added to
+playlists (they're reported, not lost).
 
 **Smart shuffle (`S`):** open a playlist (or Liked Songs / any track list), then
 press `S` to build a *smart shuffle* — a fresh queue of songs that **fit that

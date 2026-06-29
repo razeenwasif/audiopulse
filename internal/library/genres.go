@@ -60,9 +60,9 @@ var genreRules = []genreRule{
 	{"hyperpop", "Pop"}, {"pop", "Pop"},
 }
 
-// otherBucket holds tracks whose artists have no genre data or no rule match,
+// OtherBucket holds tracks whose artists have no genre data or no rule match,
 // plus the contents of buckets too small to deserve their own playlist.
-const otherBucket = "Other"
+const OtherBucket = "Other"
 
 // bucketRank gives each bucket a priority index from genreRules order, used to
 // break ties when two buckets get the same number of votes (earlier = higher).
@@ -98,7 +98,7 @@ func GenreBucket(genres []string) string {
 			votes[b]++
 		}
 	}
-	best, bestN, bestRank := otherBucket, 0, 1<<30
+	best, bestN, bestRank := OtherBucket, 0, 1<<30
 	for b, n := range votes {
 		if n > bestN || (n == bestN && bucketRank[b] < bestRank) {
 			best, bestN, bestRank = b, n, bucketRank[b]
@@ -113,31 +113,65 @@ type GenreGroup struct {
 	Tracks []spotify.Track
 }
 
-// BuildGenreGroups buckets tracks by genre and returns groups sorted largest-
-// first with "Other" pinned last. A track's genre is voted from the union of all
-// its artists' genre tags (genres maps artist id → tags), which catches far more
-// than the primary artist alone. Buckets smaller than minBucket are merged into
-// "Other" so the result is a handful of meaningful playlists, not a pile of
-// one-song ones — every track still lands in a group. minBucket <= 1 disables the
-// merge.
+// BucketNames returns the distinct coarse genre buckets (excluding "Other") in
+// priority order — the fixed choice list offered to the LLM fallback classifier,
+// so its answers merge with the genre-tag-derived buckets.
+func BucketNames() []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, r := range genreRules {
+		if !seen[r.bucket] {
+			seen[r.bucket] = true
+			out = append(out, r.bucket)
+		}
+	}
+	return out
+}
+
+// TrackBucket returns the coarse genre bucket for one track, voted from the union
+// of all its artists' genre tags (genres maps artist id → tags). "Other" when its
+// artists have no genre data or nothing matches.
+func TrackBucket(t spotify.Track, genres map[zspotify.ID][]string) string {
+	ids := t.ArtistIDs
+	if len(ids) == 0 && t.ArtistID != "" {
+		ids = []zspotify.ID{t.ArtistID}
+	}
+	var tags []string
+	for _, aid := range ids {
+		tags = append(tags, genres[aid]...)
+	}
+	return GenreBucket(tags)
+}
+
+// BuildGenreGroups buckets tracks by their artists' genres (see GroupByBuckets).
 func BuildGenreGroups(tracks []spotify.Track, genres map[zspotify.ID][]string, minBucket int) []GenreGroup {
+	buckets := make([]string, len(tracks))
+	for i, t := range tracks {
+		buckets[i] = TrackBucket(t, genres)
+	}
+	return GroupByBuckets(tracks, buckets, minBucket)
+}
+
+// GroupByBuckets groups tracks by a parallel slice of per-track bucket names
+// (buckets[i] is tracks[i]'s bucket; "" → "Other") and returns groups sorted
+// largest-first with "Other" pinned last. Buckets smaller than minBucket are
+// merged into "Other" so the result is a handful of meaningful playlists, not a
+// pile of one-song ones — every track still lands in a group. minBucket <= 1
+// disables the merge. This is the join point for the LLM fallback, which rewrites
+// some "Other" entries to real buckets before grouping.
+func GroupByBuckets(tracks []spotify.Track, buckets []string, minBucket int) []GenreGroup {
 	byBucket := make(map[string][]spotify.Track)
-	for _, t := range tracks {
-		ids := t.ArtistIDs
-		if len(ids) == 0 && t.ArtistID != "" {
-			ids = []zspotify.ID{t.ArtistID}
+	for i, t := range tracks {
+		b := OtherBucket
+		if i < len(buckets) && buckets[i] != "" {
+			b = buckets[i]
 		}
-		var tags []string
-		for _, aid := range ids {
-			tags = append(tags, genres[aid]...)
-		}
-		b := GenreBucket(tags)
 		byBucket[b] = append(byBucket[b], t)
 	}
 	if minBucket > 1 {
 		for name, ts := range byBucket {
-			if name != otherBucket && len(ts) < minBucket {
-				byBucket[otherBucket] = append(byBucket[otherBucket], ts...)
+			if name != OtherBucket && len(ts) < minBucket {
+				byBucket[OtherBucket] = append(byBucket[OtherBucket], ts...)
 				delete(byBucket, name)
 			}
 		}
@@ -148,8 +182,8 @@ func BuildGenreGroups(tracks []spotify.Track, genres map[zspotify.ID][]string, m
 	}
 	sort.Slice(groups, func(i, j int) bool {
 		// "Other" always sorts last; the rest by size (largest first), then name.
-		if (groups[i].Name == otherBucket) != (groups[j].Name == otherBucket) {
-			return groups[j].Name == otherBucket
+		if (groups[i].Name == OtherBucket) != (groups[j].Name == OtherBucket) {
+			return groups[j].Name == OtherBucket
 		}
 		if len(groups[i].Tracks) != len(groups[j].Tracks) {
 			return len(groups[i].Tracks) > len(groups[j].Tracks)

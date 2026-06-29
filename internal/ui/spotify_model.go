@@ -1462,13 +1462,18 @@ func (m Spotify) createPlaylistCmd(request string) tea.Cmd {
 // smaller buckets are merged into "Other" (avoids a pile of tiny playlists).
 const organizeMinBucket = 4
 
+// maxClassify bounds how many untagged ("Other") tracks are sent to the local
+// model for genre classification, so a huge library doesn't make planning crawl.
+const maxClassify = 800
+
 // planOrganizeCmd pages all Liked Songs, looks up each track's genre (via its
 // primary artist), and groups them into coarse genre buckets — the plan the user
 // previews before any playlist is created.
 func (m Spotify) planOrganizeCmd() tea.Cmd {
 	client := m.client
+	ag := m.agent
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
 		var tracks []spotify.Track
@@ -1511,7 +1516,33 @@ func (m Spotify) planOrganizeCmd() tea.Cmd {
 			return organizePlanMsg{err: err}
 		}
 		meID, _ := client.MeID(ctx)
-		groups := library.BuildGenreGroups(tracks, genres, organizeMinBucket)
+
+		// Bucket each track from its artists' genres. Tracks whose artists Spotify
+		// hasn't tagged land in "Other"; ask the local model to classify those by
+		// title+artist (best-effort — unknown ones stay "Other").
+		buckets := make([]string, len(tracks))
+		var otherIdx []int
+		var otherLabels []string
+		for i, t := range tracks {
+			buckets[i] = library.TrackBucket(t, genres)
+			if buckets[i] == library.OtherBucket {
+				otherIdx = append(otherIdx, i)
+				otherLabels = append(otherLabels, trackLabel(t))
+			}
+		}
+		if ag != nil && len(otherLabels) > 0 {
+			if len(otherLabels) > maxClassify {
+				otherLabels = otherLabels[:maxClassify]
+			}
+			if overrides, _ := ag.ClassifyGenres(ctx, otherLabels, library.BucketNames()); len(overrides) > 0 {
+				for j := range otherLabels {
+					if b, ok := overrides[j]; ok {
+						buckets[otherIdx[j]] = b
+					}
+				}
+			}
+		}
+		groups := library.GroupByBuckets(tracks, buckets, organizeMinBucket)
 
 		// Which genre playlists already exist (so the preview/run can update them
 		// instead of creating duplicates on a re-run).
