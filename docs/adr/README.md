@@ -25,6 +25,10 @@ history.
 | [0010](0010-podcasts.md)                         | Podcasts (saved shows + episodes)       | Accepted |
 | [0011](0011-resilient-playback.md)               | Resilient playback (supervision+recovery)| Accepted |
 | [0012](0012-library-mutations.md)                | Library mutations (like/follow) + re-auth| Accepted |
+| [0013](0013-local-nl-control.md)                 | Local natural-language playback control  | Accepted |
+| [0014](0014-voice-control-vosk.md)               | Offline voice control (Vosk)             | Accepted |
+| [0015](0015-library-rag.md)                      | Library RAG (embeddings, recommend, chat)| Accepted |
+| [0016](0016-genre-organize.md)                   | Organize Liked Songs into genre playlists| Accepted |
 
 ## Statuses
 

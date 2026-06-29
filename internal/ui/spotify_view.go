@@ -101,6 +101,29 @@ func (m Spotify) View() string {
 		out = overlay(out, box, max0(x), max0(y))
 	}
 
+	// Float the "working" spinner while a long agent op runs (recommend / smart
+	// shuffle / create playlist), so it's obvious AudioPulse is busy.
+	if m.recommending {
+		box := m.renderWorking()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
+	// Float the genre-organize preview / progress, centered.
+	if m.organizeState == "preview" {
+		box := m.renderOrganizePreview()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
+	if m.organizeState == "running" {
+		box := m.renderOrganizeProgress()
+		x := (m.width - lipgloss.Width(box)) / 2
+		y := (m.height - lipgloss.Height(box)) / 2
+		out = overlay(out, box, max0(x), max0(y))
+	}
+
 	// Float the add-to-playlist picker, centered.
 	if m.addOpen {
 		box := m.renderAddModal()
@@ -450,6 +473,96 @@ func (m Spotify) renderChatModal() string {
 		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
 		Padding(1, 2).Width(boxW).
 		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
+	return solidify(box, spotlightBGCode)
+}
+
+// renderWorking builds the small floating "working…" indicator (animated
+// spinner) shown while a recommend / smart-shuffle / create-playlist op runs.
+func (m Spotify) renderWorking() string {
+	label := m.workLabel
+	if strings.TrimSpace(label) == "" {
+		label = "Working"
+	}
+	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).
+		Render(m.spinner() + "  " + label + "…")
+	hint := lipgloss.NewStyle().Foreground(colorFaint).
+		Render("curating with a local model — this can take up to a minute")
+	body := lipgloss.JoinVertical(lipgloss.Center, title, "", hint)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 3).
+		Render(body)
+	return solidify(box, spotlightBGCode)
+}
+
+// renderOrganizePreview builds the confirmation modal for genre-organize: the
+// genre buckets and their sizes, awaiting Enter to create them all.
+func (m Spotify) renderOrganizePreview() string {
+	boxW := clamp(m.width/2, 44, 64)
+	innerW := boxW - 4
+	header := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Organize Liked Songs by genre")
+	sub := lipgloss.NewStyle().Foreground(colorMuted).Render(
+		fmt.Sprintf("%d songs → %d playlists (one per genre):", m.organizeTotal, len(m.organizeGroups)))
+	sep := lipgloss.NewStyle().Foreground(colorBorder).Render(strings.Repeat("─", innerW))
+
+	// Window the bucket list around the cursor.
+	bodyH := clamp(m.height-12, 3, len(m.organizeGroups))
+	start := 0
+	if m.organizeCursor >= bodyH {
+		start = m.organizeCursor - bodyH + 1
+	}
+	start = clamp(start, 0, max0(len(m.organizeGroups)-bodyH))
+	end := min(start+bodyH, len(m.organizeGroups))
+
+	name := lipgloss.NewStyle().Foreground(colorText)
+	cnt := lipgloss.NewStyle().Foreground(colorFaint)
+	rows := make([]string, 0, bodyH)
+	for i := start; i < end; i++ {
+		g := m.organizeGroups[i]
+		line := fmt.Sprintf("%-*s %s", innerW-8, truncate(organizePlaylistPrefix+g.Name, innerW-8),
+			cnt.Render(fmt.Sprintf("%3d", len(g.Tracks))))
+		rows = append(rows, name.Render(line))
+	}
+	for len(rows) < bodyH {
+		rows = append(rows, " ")
+	}
+
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render(truncate(
+		fmt.Sprintf("↵ create %d playlists · ↑↓ scroll · esc cancel", len(m.organizeGroups)), innerW))
+
+	parts := append([]string{header, sub, sep}, rows...)
+	parts = append(parts, sep, hint)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
+	return solidify(box, spotlightBGCode)
+}
+
+// renderOrganizeProgress builds the progress box shown while genre playlists are
+// being created.
+func (m Spotify) renderOrganizeProgress() string {
+	boxW := clamp(m.width*3/5, 44, 72)
+	innerW := boxW - 4
+	title := lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true).Render("✦ Creating genre playlists")
+	dim := lipgloss.NewStyle().Foreground(colorMuted)
+
+	done, total := m.organizeProg[0], m.organizeProg[1]
+	detail := fmt.Sprintf("Creating playlists  %d / %d", done, total)
+	if m.organizeName != "" {
+		detail = fmt.Sprintf("Creating “%s%s”  (%d / %d)", organizePlaylistPrefix, m.organizeName, done+1, total)
+	}
+	lines := []string{
+		title, "",
+		exportBar(done, total, innerW),
+		dim.Render(detail),
+		"",
+		lipgloss.NewStyle().Foreground(colorFaint).Render("Adding your songs to each — hang tight."),
+	}
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).
+		Padding(1, 2).Width(boxW).
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return solidify(box, spotlightBGCode)
 }
 

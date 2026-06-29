@@ -690,6 +690,19 @@ func TestCreatePlaylistFlow(t *testing.T) {
 	if cmd == nil || !sp.recommending || !strings.Contains(sp.status, "Curating") {
 		t.Errorf("ActionCreatePL should start curating (busy=%v status=%q)", sp.recommending, sp.status)
 	}
+	// A visible "working" overlay (spinner) shows while it runs.
+	if !strings.Contains(sp.View(), "Creating") {
+		t.Error("working overlay should be visible while curating")
+	}
+	// The spinner ticks while busy and stops once the op finishes.
+	adv, tcmd := sp.Update(workTickMsg{})
+	if tcmd == nil || adv.(Spotify).workFrame == 0 {
+		t.Error("workTick should advance the spinner and reschedule while busy")
+	}
+	idle := sampleSpotify() // recommending == false
+	if _, icmd := idle.Update(workTickMsg{}); icmd != nil {
+		t.Error("workTick should stop when no op is running")
+	}
 
 	// A successful result loads + plays the new playlist and adds it to the sidebar.
 	m := sampleSpotify()
@@ -723,6 +736,71 @@ func TestCreatePlaylistFlow(t *testing.T) {
 
 	if got := defaultPlaylistName("rainy day jazz"); got != "Rainy day jazz" {
 		t.Errorf("defaultPlaylistName = %q", got)
+	}
+}
+
+func TestOrganizeByGenreFlow(t *testing.T) {
+	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+
+	// ActionOrganize starts the analysis (spinner).
+	r := sampleSpotify()
+	mm, cmd := r.runAgentCommand(agent.Command{Action: agent.ActionOrganize})
+	if cmd == nil || !mm.(Spotify).recommending {
+		t.Error("ActionOrganize should start analyzing with the working spinner")
+	}
+
+	// The plan result opens the preview (and stops the spinner).
+	groups := []library.GenreGroup{
+		{Name: "Rock", Tracks: make([]spotify.Track, 30)},
+		{Name: "Hip-Hop", Tracks: make([]spotify.Track, 20)},
+		{Name: "Other", Tracks: make([]spotify.Track, 5)},
+	}
+	m := sampleSpotify()
+	mm, _ = m.Update(organizePlanMsg{groups: groups, total: 55, meID: "user1"})
+	sp := mm.(Spotify)
+	if sp.organizeState != "preview" || sp.recommending || sp.meID != "user1" {
+		t.Fatalf("plan should open preview (state=%q busy=%v)", sp.organizeState, sp.recommending)
+	}
+	if v := sp.View(); !strings.Contains(v, "Organize Liked Songs by genre") || !strings.Contains(v, "Liked: Rock") {
+		t.Error("preview overlay should list the genre buckets")
+	}
+
+	// esc cancels without creating anything.
+	cc, _ := sp.Update(key("esc"))
+	if cc.(Spotify).organizeState != "" || !strings.Contains(cc.(Spotify).status, "cancelled") {
+		t.Errorf("esc should cancel the preview; state=%q", cc.(Spotify).organizeState)
+	}
+
+	// Enter starts the run (empty groups → the goroutine touches no client).
+	starter := sampleSpotify()
+	starter.organizeState = "preview"
+	starter.meID = "user1"
+	mm, cmd = starter.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	run := mm.(Spotify)
+	if cmd == nil || run.organizeState != "running" || run.organizeCh == nil {
+		t.Fatalf("enter should start the run (state=%q)", run.organizeState)
+	}
+	if !strings.Contains(run.View(), "Creating genre playlists") {
+		t.Error("running overlay should show progress")
+	}
+
+	// Progress + terminal handlers (built directly, no live goroutine).
+	running := sampleSpotify()
+	running.organizeState = "running"
+	mm, cmd = running.Update(organizeMsg{done: 1, total: 3, name: "Hip-Hop"})
+	if cmd == nil || mm.(Spotify).organizeProg != [2]int{1, 3} {
+		t.Errorf("progress event should update organizeProg, got %v", mm.(Spotify).organizeProg)
+	}
+	mm, cmd = running.Update(organizeMsg{final: true, created: 3})
+	done := mm.(Spotify)
+	if cmd == nil || done.organizeState != "" || !strings.Contains(done.status, "created 3 genre playlists") {
+		t.Errorf("final event should finish + report; state=%q status=%q", done.organizeState, done.status)
+	}
+
+	// An empty library explains.
+	mm, _ = sampleSpotify().Update(organizePlanMsg{err: errors.New("you have no Liked Songs to organize")})
+	if !strings.Contains(mm.(Spotify).status, "Couldn't analyze") {
+		t.Errorf("plan error should explain; status=%q", mm.(Spotify).status)
 	}
 }
 

@@ -38,11 +38,12 @@ const (
 	ActionShuffle   Action = "shuffle"
 	ActionRepeat    Action = "repeat"
 	ActionVolume    Action = "volume"
-	ActionRecommend Action = "recommend"       // suggest tracks (RAG over the library)
-	ActionShuffleAI Action = "smart_shuffle"   // queue similar songs not in the current playlist
-	ActionCreatePL  Action = "create_playlist" // curate + save a themed playlist
-	ActionAsk       Action = "ask"             // answer a question about the library
-	ActionReindex   Action = "reindex"         // rebuild the library RAG index
+	ActionRecommend Action = "recommend"        // suggest tracks (RAG over the library)
+	ActionShuffleAI Action = "smart_shuffle"    // queue similar songs not in the current playlist
+	ActionCreatePL  Action = "create_playlist"  // curate + save a themed playlist
+	ActionOrganize  Action = "organize_library" // sort Liked Songs into per-genre playlists
+	ActionAsk       Action = "ask"              // answer a question about the library
+	ActionReindex   Action = "reindex"          // rebuild the library RAG index
 	ActionUnknown   Action = "unknown"
 )
 
@@ -53,7 +54,7 @@ var validActions = map[Action]bool{
 	ActionNext: true, ActionPrevious: true, ActionShuffle: true,
 	ActionRepeat: true, ActionVolume: true,
 	ActionRecommend: true, ActionShuffleAI: true, ActionCreatePL: true,
-	ActionAsk: true, ActionReindex: true,
+	ActionOrganize: true, ActionAsk: true, ActionReindex: true,
 }
 
 // Command is the structured result of interpreting an utterance. Only the
@@ -662,7 +663,7 @@ func promptMessages() []chatMessage {
 	const system = `You convert a user's music request into ONE JSON object and nothing else.
 
 Schema (always include every field):
-{"action": one of "play","pause","resume","next","previous","shuffle","repeat","volume","recommend","smart_shuffle","create_playlist","ask","reindex","unknown",
+{"action": one of "play","pause","resume","next","previous","shuffle","repeat","volume","recommend","smart_shuffle","create_playlist","organize_library","ask","reindex","unknown",
  "query": string — for "play": the exact song/artist to play; for "recommend": the vibe/seed; for "create_playlist": the theme/description; for "ask": the question; otherwise "",
  "on": boolean — for "shuffle": true to enable, false to disable,
  "repeat": one of "off","all","one" — only for "repeat",
@@ -672,6 +673,7 @@ Rules:
 - "play X" / "put on X" / "I want to hear X" -> action "play", query "X" (a SPECIFIC song or artist).
 - "play something like X" / "recommend X" / "suggest some Y" / "songs like Z" / "music for working out" -> action "recommend", query = the vibe or seed (NOT "play"). This just plays a temporary queue.
 - "create a playlist of X" / "make me a playlist of/for X" / "build a playlist of Z" / "save a playlist of …" -> action "create_playlist", query = the theme/description of the music (e.g. "top classics from the 90s to early 2000s"). This creates and SAVES a real playlist.
+- "organize/sort/group my liked songs (into playlists) by genre" / "split my library into genre playlists" / "sort my saved songs by genre" -> action "organize_library", query "". This sorts the EXISTING Liked Songs into one playlist per genre (different from create_playlist, which invents a new themed list).
 - "smart shuffle" / "smart-shuffle this" / "shuffle in similar songs" / "shuffle with recommendations" / "add songs like this playlist" -> action "smart_shuffle", query "" (it works on the playlist already open).
 - A library QUESTION ("how many X songs do I have", "what playlists do I have", "do I have any Y", "which album…") -> action "ask", query = the question.
 - "reindex" / "rebuild the library index" / "refresh my library" -> action "reindex".
@@ -689,6 +691,7 @@ Output only the JSON object.`
 		{"recommend some chill focus music", `{"action":"recommend","query":"chill focus music","on":false,"repeat":"off","volume":0}`},
 		{"smart shuffle this playlist", `{"action":"smart_shuffle","query":"","on":false,"repeat":"off","volume":0}`},
 		{"create a playlist of the top classics from the 90s to early 2000s", `{"action":"create_playlist","query":"top classics from the 90s to early 2000s","on":false,"repeat":"off","volume":0}`},
+		{"group every song in my liked songs into playlists by genre", `{"action":"organize_library","query":"","on":false,"repeat":"off","volume":0}`},
 		{"how many radiohead songs do i have", `{"action":"ask","query":"how many radiohead songs do i have","on":false,"repeat":"off","volume":0}`},
 		{"rebuild the library index", `{"action":"reindex","query":"","on":false,"repeat":"off","volume":0}`},
 		{"skip this one", `{"action":"next","query":"","on":false,"repeat":"off","volume":0}`},

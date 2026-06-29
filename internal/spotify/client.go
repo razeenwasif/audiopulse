@@ -28,6 +28,7 @@ type Track struct {
 	URI      zspotify.URI
 	Title    string
 	Artist   string
+	ArtistID zspotify.ID // primary artist (for genre lookup)
 	Album    string
 	Duration time.Duration
 	ImageURL string
@@ -487,6 +488,31 @@ func (c *Client) AddTrackToPlaylist(ctx context.Context, playlistID, trackID zsp
 	return err
 }
 
+// ArtistGenres returns each artist's genre tags, batched to the API's 50-ids
+// limit. Spotify attaches genres to artists, not tracks, so this is how a track's
+// genre is derived (via its primary artist). Unknown/missing artists are simply
+// absent from the map.
+func (c *Client) ArtistGenres(ctx context.Context, ids []zspotify.ID) (map[zspotify.ID][]string, error) {
+	const maxPerRequest = 50
+	out := make(map[zspotify.ID][]string, len(ids))
+	for i := 0; i < len(ids); i += maxPerRequest {
+		end := i + maxPerRequest
+		if end > len(ids) {
+			end = len(ids)
+		}
+		artists, err := c.api.GetArtists(ctx, ids[i:end]...)
+		if err != nil {
+			return out, err
+		}
+		for _, a := range artists {
+			if a != nil {
+				out[a.ID] = a.Genres
+			}
+		}
+	}
+	return out, nil
+}
+
 // CreatePlaylist creates a new playlist owned by userID (use MeID) and returns
 // its id and URI. public=false makes it private (playlist-modify-private scope).
 func (c *Client) CreatePlaylist(ctx context.Context, userID, name, description string, public bool) (zspotify.ID, zspotify.URI, error) {
@@ -640,6 +666,7 @@ func toTrack(t *zspotify.FullTrack) Track {
 		Album:    t.Album.Name,
 		Duration: time.Duration(t.Duration) * time.Millisecond,
 		Artist:   joinArtists(t.Artists),
+		ArtistID: primaryArtistID(t.Artists),
 	}
 	if len(t.Album.Images) > 0 {
 		tr.ImageURL = t.Album.Images[0].URL
@@ -654,7 +681,15 @@ func simpleToTrack(t *zspotify.SimpleTrack) Track {
 		Title:    t.Name,
 		Duration: time.Duration(t.Duration) * time.Millisecond,
 		Artist:   joinArtists(t.Artists),
+		ArtistID: primaryArtistID(t.Artists),
 	}
+}
+
+func primaryArtistID(artists []zspotify.SimpleArtist) zspotify.ID {
+	if len(artists) > 0 {
+		return artists[0].ID
+	}
+	return ""
 }
 
 func firstImageURL(images []zspotify.Image) string {
