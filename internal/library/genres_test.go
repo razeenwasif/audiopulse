@@ -67,6 +67,27 @@ func TestBuildGenreGroups(t *testing.T) {
 	}
 }
 
+func TestBucketNamesAndGroupByBuckets(t *testing.T) {
+	names := BucketNames()
+	if len(names) < 10 {
+		t.Fatalf("expected many bucket names, got %d", len(names))
+	}
+	for _, n := range names {
+		if n == OtherBucket {
+			t.Error("BucketNames must not include Other")
+		}
+	}
+
+	// GroupByBuckets honours an explicit per-track bucket slice (the LLM override
+	// join point): "" falls to Other, sub-minBucket buckets merge into Other.
+	tracks := []spotify.Track{{ID: "1"}, {ID: "2"}, {ID: "3"}, {ID: "4"}}
+	buckets := []string{"Pop", "Pop", "Pop", ""} // 3 Pop + 1 untagged
+	g := GroupByBuckets(tracks, buckets, 2)
+	if len(g) != 2 || g[0].Name != "Pop" || len(g[0].Tracks) != 3 || g[1].Name != "Other" {
+		t.Errorf("GroupByBuckets = %+v", g)
+	}
+}
+
 func TestBuildGenreGroupsUnionsAllArtists(t *testing.T) {
 	// A track with two artists: a featured rapper (no genre) and a pop singer.
 	// The union over both artists' genres should still classify it as Pop.

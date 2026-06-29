@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -461,6 +462,67 @@ Return ONLY a JSON object: {"name":"...","suggestions":[{"title":"...","artist":
 	}
 	name, sugs := parsePlaylist(content)
 	return name, sugs, nil
+}
+
+// ClassifyGenres assigns each "Title — Artist" item to one of the allowed genre
+// buckets, for tracks Spotify left untagged (the organize "Other" pile). Returns
+// a map from item index → bucket (only confident, in-list answers; unknown items
+// are simply absent, staying "Other"). Best-effort: a failed batch is skipped, so
+// a partial map plus the error is returned. Batches to keep prompts small.
+func (c *Client) ClassifyGenres(ctx context.Context, items []string, buckets []string) (map[int]string, error) {
+	out := make(map[int]string)
+	if len(items) == 0 || len(buckets) == 0 {
+		return out, nil
+	}
+	allowed := make(map[string]string, len(buckets)) // lower → canonical
+	for _, b := range buckets {
+		allowed[strings.ToLower(b)] = b
+	}
+	const batch = 30
+	var firstErr error
+	for start := 0; start < len(items); start += batch {
+		end := start + batch
+		if end > len(items) {
+			end = len(items)
+		}
+		var b strings.Builder
+		b.WriteString("You are a music genre classifier. Assign each numbered song to EXACTLY ONE genre from this list:\n")
+		b.WriteString(strings.Join(buckets, ", "))
+		b.WriteString("\nUse \"Other\" if you don't recognise the song or it fits none. Do NOT invent genres outside the list.\nSongs:\n")
+		for i := start; i < end; i++ {
+			fmt.Fprintf(&b, "%d. %s\n", i-start+1, items[i])
+		}
+		b.WriteString("\nReturn ONLY a JSON object mapping each song number to its genre, e.g. {\"1\":\"Pop\",\"2\":\"Hip-Hop\"}.")
+
+		content, err := c.chat(ctx, []chatMessage{
+			{Role: "system", Content: "You classify songs into genres and reply with strict JSON only. No commentary."},
+			{Role: "user", Content: b.String()},
+		}, true, 0.2)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			return out, firstErr // network/model error — stop, return what we have
+		}
+		var m map[string]string
+		if json.Unmarshal([]byte(firstJSONSpan(content)), &m) != nil {
+			continue
+		}
+		for k, v := range m {
+			n, err := strconv.Atoi(strings.TrimSpace(k))
+			if err != nil {
+				continue
+			}
+			idx := start + n - 1
+			if idx < start || idx >= end {
+				continue
+			}
+			if canon, ok := allowed[strings.ToLower(strings.TrimSpace(v))]; ok {
+				out[idx] = canon
+			}
+		}
+	}
+	return out, firstErr
 }
 
 // parsePlaylist extracts a playlist name and the suggestion list from a curator

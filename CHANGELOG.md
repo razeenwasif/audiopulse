@@ -13,10 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads each track's genre (from its artists), groups your whole library into
   coarse genre buckets by majority vote, **shows a preview** (e.g. "Liked: Rock 80,
   Liked: Hip-Hop 120, …"), and on confirmation files every song into one playlist
-  per genre — with a live progress bar. **Re-running updates the existing
-  "Liked: …" playlists** (only new songs added) instead of duplicating them.
-  Deterministic (no LLM guessing); the model only interprets the request. Reuses
-  the `playlist-modify-*` scopes. See [ADR-0016](docs/adr/0016-genre-organize.md).
+  per genre — with a live progress bar. Tracks whose artists Spotify hasn't tagged
+  with a genre are classified by the **local model** (title + artist) so they don't
+  all pile into "Other" — on a 527-track test library this cut "Other" from 244 to
+  37. **Re-running updates the existing "Liked: …" playlists** (only new songs
+  added) instead of duplicating them. Reuses the `playlist-modify-*` scopes. See
+  [ADR-0016](docs/adr/0016-genre-organize.md).
 - **"Working…" spinner** for the AI music operations (recommend, smart shuffle,
   create playlist). These take ~30–60s (local model + per-song Search) with no
   prior visual cue beyond the status line; now an animated overlay makes it
