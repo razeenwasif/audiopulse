@@ -202,13 +202,15 @@ type Spotify struct {
 	// Genre organize (NL: "group my liked songs by genre"). Two phases: a plan
 	// (preview of genre buckets) the user confirms, then a background run that
 	// creates one playlist per bucket.
-	organizeState  string // "" | "preview" | "running"
-	organizeGroups []library.GenreGroup
-	organizeTotal  int    // liked tracks analyzed
-	organizeCursor int    // preview scroll
-	organizeProg   [2]int // done, total playlists during a run
-	organizeName   string // bucket currently being created
-	organizeCh     <-chan organizeEvent
+	organizeState    string // "" | "preview" | "running"
+	organizeGroups   []library.GenreGroup
+	organizeExisting map[string]bool // bucket name → a "Liked: …" playlist already exists
+	organizeTotal    int             // liked tracks analyzed
+	organizeCursor   int             // preview scroll
+	organizeProg     [2]int          // done, total playlists during a run
+	organizeName     string          // bucket currently being filed
+	organizeUpdate   bool            // current bucket is an update (vs create)
+	organizeCh       <-chan organizeEvent
 
 	// Add-to-playlist picker (opened with P): choose which of your editable
 	// playlists to save the selected/playing track to.
@@ -454,19 +456,26 @@ type smartShuffleMsg struct {
 }
 
 // organizePlanMsg carries the genre-bucket plan to preview (or an error).
+// existing maps bucket name → whether a "Liked: <bucket>" playlist already
+// exists (so a re-run updates it rather than duplicating).
 type organizePlanMsg struct {
-	groups []library.GenreGroup
-	total  int
-	meID   string
-	err    error
+	groups   []library.GenreGroup
+	total    int
+	skipped  int // liked items with no Spotify id (local files) — can't be playlisted
+	meID     string
+	existing map[string]bool
+	err      error
 }
 
-// organizeEvent is one step of the background organize run: progress (creating
-// playlist done/total, name) or a terminal event (created count or error).
+// organizeEvent is one step of the background organize run: progress (filing a
+// playlist done/total, name, whether it's an update) or a terminal event
+// (created/updated counts or error).
 type organizeEvent struct {
 	done, total int
 	name        string
+	update      bool
 	created     int
+	updated     int
 	final       bool
 	err         error
 }
@@ -1463,12 +1472,19 @@ func (m Spotify) planOrganizeCmd() tea.Cmd {
 		defer cancel()
 
 		var tracks []spotify.Track
+		skipped := 0
 		for offset := 0; ; {
 			page, err := client.LikedSongsPage(ctx, offset)
 			if err != nil {
 				return organizePlanMsg{err: err}
 			}
-			tracks = append(tracks, page.Tracks...)
+			for _, t := range page.Tracks {
+				if t.ID == "" { // local files can't be added to a playlist
+					skipped++
+					continue
+				}
+				tracks = append(tracks, t)
+			}
 			if !page.HasMore() || len(tracks) >= maxTrackItems {
 				break
 			}
@@ -1478,12 +1494,16 @@ func (m Spotify) planOrganizeCmd() tea.Cmd {
 			return organizePlanMsg{err: errors.New("you have no Liked Songs to organize")}
 		}
 
+		// Genre is voted across ALL of a track's artists, so collect every
+		// artist id (not just the primary) — far better coverage.
 		seen := make(map[zspotify.ID]bool)
 		var ids []zspotify.ID
 		for _, t := range tracks {
-			if t.ArtistID != "" && !seen[t.ArtistID] {
-				seen[t.ArtistID] = true
-				ids = append(ids, t.ArtistID)
+			for _, aid := range t.ArtistIDs {
+				if aid != "" && !seen[aid] {
+					seen[aid] = true
+					ids = append(ids, aid)
+				}
 			}
 		}
 		genres, err := client.ArtistGenres(ctx, ids)
@@ -1492,7 +1512,18 @@ func (m Spotify) planOrganizeCmd() tea.Cmd {
 		}
 		meID, _ := client.MeID(ctx)
 		groups := library.BuildGenreGroups(tracks, genres, organizeMinBucket)
-		return organizePlanMsg{groups: groups, total: len(tracks), meID: meID}
+
+		// Which genre playlists already exist (so the preview/run can update them
+		// instead of creating duplicates on a re-run).
+		existing := make(map[string]bool)
+		if pls, e := client.Playlists(ctx); e == nil {
+			for _, p := range pls {
+				if strings.HasPrefix(p.Name, organizePlaylistPrefix) && (p.Collaborative || (meID != "" && p.OwnerID == meID)) {
+					existing[strings.TrimPrefix(p.Name, organizePlaylistPrefix)] = true
+				}
+			}
+		}
+		return organizePlanMsg{groups: groups, total: len(tracks), skipped: skipped, meID: meID, existing: existing}
 	}
 }
 
@@ -1500,36 +1531,79 @@ func (m Spotify) planOrganizeCmd() tea.Cmd {
 // identifiable and grouped together in the sidebar.
 const organizePlaylistPrefix = "Liked: "
 
-// startOrganize creates one playlist per genre group on a background goroutine,
-// streaming progress then a terminal event (mirrors the index-build pattern).
+// startOrganize files each genre group into a playlist on a background
+// goroutine, streaming progress then a terminal event (mirrors the index-build
+// pattern). A genre whose "Liked: <Genre>" playlist already exists is **updated**
+// (only songs not already in it are added) instead of duplicated; the rest are
+// created. Reports created vs updated counts.
 func startOrganize(client *spotify.Client, meID string, groups []library.GenreGroup) <-chan organizeEvent {
 	ch := make(chan organizeEvent, 64)
 	go func() {
 		defer close(ch)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		created := 0
-		for i, g := range groups {
-			ch <- organizeEvent{done: i, total: len(groups), name: g.Name}
-			plID, _, err := client.CreatePlaylist(ctx, meID, organizePlaylistPrefix+g.Name,
-				"Auto-sorted from your Liked Songs by AudioPulse", false)
-			if err != nil {
-				ch <- organizeEvent{final: true, created: created, err: err}
-				return
+
+		// Map existing "Liked: …" playlists (owned/collaborative) by name → id.
+		existing := make(map[string]zspotify.ID)
+		if pls, err := client.Playlists(ctx); err == nil {
+			for _, p := range pls {
+				if strings.HasPrefix(p.Name, organizePlaylistPrefix) && (p.Collaborative || (meID != "" && p.OwnerID == meID)) {
+					existing[p.Name] = p.ID
+				}
 			}
+		}
+
+		var created, updated int
+		for i, g := range groups {
+			name := organizePlaylistPrefix + g.Name
+			_, isUpdate := existing[name]
+			ch <- organizeEvent{done: i, total: len(groups), name: g.Name, update: isUpdate}
+
 			ids := make([]zspotify.ID, 0, len(g.Tracks))
 			for _, t := range g.Tracks {
 				if t.ID != "" {
 					ids = append(ids, t.ID)
 				}
 			}
+
+			if plID, ok := existing[name]; ok {
+				// Update: add only the songs not already in the playlist.
+				have, err := client.PlaylistTrackIDs(ctx, plID)
+				if err != nil {
+					ch <- organizeEvent{final: true, created: created, updated: updated, err: err}
+					return
+				}
+				haveSet := make(map[zspotify.ID]bool, len(have))
+				for _, id := range have {
+					haveSet[id] = true
+				}
+				fresh := ids[:0:0]
+				for _, id := range ids {
+					if !haveSet[id] {
+						fresh = append(fresh, id)
+					}
+				}
+				if err := client.AddTracksToPlaylist(ctx, plID, fresh); err != nil {
+					ch <- organizeEvent{final: true, created: created, updated: updated, err: err}
+					return
+				}
+				updated++
+				continue
+			}
+
+			plID, _, err := client.CreatePlaylist(ctx, meID, name,
+				"Auto-sorted from your Liked Songs by AudioPulse", false)
+			if err != nil {
+				ch <- organizeEvent{final: true, created: created, updated: updated, err: err}
+				return
+			}
 			if err := client.AddTracksToPlaylist(ctx, plID, ids); err != nil {
-				ch <- organizeEvent{final: true, created: created, err: err}
+				ch <- organizeEvent{final: true, created: created, updated: updated, err: err}
 				return
 			}
 			created++
 		}
-		ch <- organizeEvent{done: len(groups), total: len(groups), created: created, final: true}
+		ch <- organizeEvent{done: len(groups), total: len(groups), created: created, updated: updated, final: true}
 	}()
 	return ch
 }

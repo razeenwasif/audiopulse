@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	zspotify "github.com/zmb3/spotify/v2"
@@ -24,14 +25,15 @@ const maxLibraryItems = 10000
 
 // Track is a single playable track.
 type Track struct {
-	ID       zspotify.ID
-	URI      zspotify.URI
-	Title    string
-	Artist   string
-	ArtistID zspotify.ID // primary artist (for genre lookup)
-	Album    string
-	Duration time.Duration
-	ImageURL string
+	ID        zspotify.ID
+	URI       zspotify.URI
+	Title     string
+	Artist    string
+	ArtistID  zspotify.ID   // primary artist (for genre lookup)
+	ArtistIDs []zspotify.ID // all artists (genre is voted across them)
+	Album     string
+	Duration  time.Duration
+	ImageURL  string
 }
 
 // Playlist is an entry in the library sidebar.
@@ -488,27 +490,68 @@ func (c *Client) AddTrackToPlaylist(ctx context.Context, playlistID, trackID zsp
 	return err
 }
 
+// PlaylistTrackIDs returns the ids of every track already in a playlist, paging
+// in full. Used to dedupe when re-running an organize so existing genre
+// playlists are updated (only new songs added) rather than duplicated.
+func (c *Client) PlaylistTrackIDs(ctx context.Context, id zspotify.ID) ([]zspotify.ID, error) {
+	var out []zspotify.ID
+	for offset := 0; ; {
+		page, err := c.PlaylistTracksPage(ctx, id, offset)
+		if err != nil {
+			return out, err
+		}
+		for _, t := range page.Tracks {
+			if t.ID != "" {
+				out = append(out, t.ID)
+			}
+		}
+		if !page.HasMore() || len(out) >= maxLibraryItems {
+			break
+		}
+		offset = page.NextOffset()
+	}
+	return out, nil
+}
+
 // ArtistGenres returns each artist's genre tags, batched to the API's 50-ids
 // limit. Spotify attaches genres to artists, not tracks, so this is how a track's
 // genre is derived (via its primary artist). Unknown/missing artists are simply
 // absent from the map.
 func (c *Client) ArtistGenres(ctx context.Context, ids []zspotify.ID) (map[zspotify.ID][]string, error) {
-	const maxPerRequest = 50
+	// NB: this deliberately fetches artists ONE AT A TIME instead of via the batch
+	// GET /v1/artists?ids= endpoint. That batch endpoint returns each artist's id
+	// and name correctly but its genres misaligned with a neighbouring artist (e.g.
+	// Evanescence's id paired with Motown genres), which scrambled every bucket.
+	// The single-artist endpoint is correct. A bounded worker pool keeps the ~hundreds
+	// of calls fast and gentle on the rate limiter; individual failures are skipped
+	// (that artist just has no genres → "Other").
+	const workers = 12
 	out := make(map[zspotify.ID][]string, len(ids))
-	for i := 0; i < len(ids); i += maxPerRequest {
-		end := i + maxPerRequest
-		if end > len(ids) {
-			end = len(ids)
-		}
-		artists, err := c.api.GetArtists(ctx, ids[i:end]...)
-		if err != nil {
-			return out, err
-		}
-		for _, a := range artists {
-			if a != nil {
-				out[a.ID] = a.Genres
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		ok  int
+		sem = make(chan struct{}, workers)
+	)
+	for _, id := range ids {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(id zspotify.ID) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			a, err := c.api.GetArtist(ctx, id)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				return
 			}
-		}
+			out[id] = a.Genres
+			ok++
+		}(id)
+	}
+	wg.Wait()
+	if ok == 0 && len(ids) > 0 {
+		return out, errors.New("could not fetch any artist genres")
 	}
 	return out, nil
 }
@@ -660,13 +703,14 @@ func (c *Client) State(ctx context.Context) (*PlayerState, error) {
 
 func toTrack(t *zspotify.FullTrack) Track {
 	tr := Track{
-		ID:       t.ID,
-		URI:      t.URI,
-		Title:    t.Name,
-		Album:    t.Album.Name,
-		Duration: time.Duration(t.Duration) * time.Millisecond,
-		Artist:   joinArtists(t.Artists),
-		ArtistID: primaryArtistID(t.Artists),
+		ID:        t.ID,
+		URI:       t.URI,
+		Title:     t.Name,
+		Album:     t.Album.Name,
+		Duration:  time.Duration(t.Duration) * time.Millisecond,
+		Artist:    joinArtists(t.Artists),
+		ArtistID:  primaryArtistID(t.Artists),
+		ArtistIDs: allArtistIDs(t.Artists),
 	}
 	if len(t.Album.Images) > 0 {
 		tr.ImageURL = t.Album.Images[0].URL
@@ -676,12 +720,13 @@ func toTrack(t *zspotify.FullTrack) Track {
 
 func simpleToTrack(t *zspotify.SimpleTrack) Track {
 	return Track{
-		ID:       t.ID,
-		URI:      t.URI,
-		Title:    t.Name,
-		Duration: time.Duration(t.Duration) * time.Millisecond,
-		Artist:   joinArtists(t.Artists),
-		ArtistID: primaryArtistID(t.Artists),
+		ID:        t.ID,
+		URI:       t.URI,
+		Title:     t.Name,
+		Duration:  time.Duration(t.Duration) * time.Millisecond,
+		Artist:    joinArtists(t.Artists),
+		ArtistID:  primaryArtistID(t.Artists),
+		ArtistIDs: allArtistIDs(t.Artists),
 	}
 }
 
@@ -690,6 +735,19 @@ func primaryArtistID(artists []zspotify.SimpleArtist) zspotify.ID {
 		return artists[0].ID
 	}
 	return ""
+}
+
+func allArtistIDs(artists []zspotify.SimpleArtist) []zspotify.ID {
+	if len(artists) == 0 {
+		return nil
+	}
+	ids := make([]zspotify.ID, 0, len(artists))
+	for _, a := range artists {
+		if a.ID != "" {
+			ids = append(ids, a.ID)
+		}
+	}
+	return ids
 }
 
 func firstImageURL(images []zspotify.Image) string {

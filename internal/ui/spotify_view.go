@@ -516,19 +516,33 @@ func (m Spotify) renderOrganizePreview() string {
 
 	name := lipgloss.NewStyle().Foreground(colorText)
 	cnt := lipgloss.NewStyle().Foreground(colorFaint)
+	tag := lipgloss.NewStyle().Foreground(colorMuted)
 	rows := make([]string, 0, bodyH)
+	updates := 0
 	for i := start; i < end; i++ {
 		g := m.organizeGroups[i]
-		line := fmt.Sprintf("%-*s %s", innerW-8, truncate(organizePlaylistPrefix+g.Name, innerW-8),
-			cnt.Render(fmt.Sprintf("%3d", len(g.Tracks))))
+		suffix := ""
+		if m.organizeExisting[g.Name] {
+			suffix = tag.Render(" · update")
+		}
+		label := truncate(organizePlaylistPrefix+g.Name, innerW-12)
+		line := fmt.Sprintf("%-*s %s%s", innerW-12, label, cnt.Render(fmt.Sprintf("%4d", len(g.Tracks))), suffix)
 		rows = append(rows, name.Render(line))
+	}
+	for _, g := range m.organizeGroups {
+		if m.organizeExisting[g.Name] {
+			updates++
+		}
 	}
 	for len(rows) < bodyH {
 		rows = append(rows, " ")
 	}
 
-	hint := lipgloss.NewStyle().Foreground(colorFaint).Render(truncate(
-		fmt.Sprintf("↵ create %d playlists · ↑↓ scroll · esc cancel", len(m.organizeGroups)), innerW))
+	action := fmt.Sprintf("↵ create %d playlists", len(m.organizeGroups))
+	if updates > 0 {
+		action = fmt.Sprintf("↵ create %d, update %d playlists", len(m.organizeGroups)-updates, updates)
+	}
+	hint := lipgloss.NewStyle().Foreground(colorFaint).Render(truncate(action+" · ↑↓ scroll · esc cancel", innerW))
 
 	parts := append([]string{header, sub, sep}, rows...)
 	parts = append(parts, sep, hint)
@@ -548,9 +562,13 @@ func (m Spotify) renderOrganizeProgress() string {
 	dim := lipgloss.NewStyle().Foreground(colorMuted)
 
 	done, total := m.organizeProg[0], m.organizeProg[1]
-	detail := fmt.Sprintf("Creating playlists  %d / %d", done, total)
+	detail := fmt.Sprintf("Filing playlists  %d / %d", done, total)
 	if m.organizeName != "" {
-		detail = fmt.Sprintf("Creating “%s%s”  (%d / %d)", organizePlaylistPrefix, m.organizeName, done+1, total)
+		verb := "Creating"
+		if m.organizeUpdate {
+			verb = "Updating"
+		}
+		detail = fmt.Sprintf("%s “%s%s”  (%d / %d)", verb, organizePlaylistPrefix, m.organizeName, done+1, total)
 	}
 	lines := []string{
 		title, "",

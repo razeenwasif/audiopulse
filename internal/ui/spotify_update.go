@@ -447,10 +447,15 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.meID = msg.meID
 		}
 		m.organizeGroups = msg.groups
+		m.organizeExisting = msg.existing
 		m.organizeTotal = msg.total
 		m.organizeCursor = 0
 		m.organizeState = "preview"
 		m.status = fmt.Sprintf("Analyzed %d Liked Songs → %d genre playlists. Review and confirm.", msg.total, len(msg.groups))
+		if msg.skipped > 0 {
+			m.status = fmt.Sprintf("Analyzed %d Liked Songs (%d local files can't be playlisted) → %d genre playlists. Review and confirm.",
+				msg.total, msg.skipped, len(msg.groups))
+		}
 		return m, nil
 
 	case organizeMsg:
@@ -458,14 +463,15 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.organizeState = ""
 			if msg.err != nil {
 				m.err = msg.err
-				m.status = fmt.Sprintf("Organize stopped after %d playlists: %s", msg.created, truncateErr(msg.err))
+				m.status = fmt.Sprintf("Organize stopped after %d playlists: %s", msg.created+msg.updated, truncateErr(msg.err))
 				return m, nil
 			}
-			m.status = fmt.Sprintf("Done — created %d genre playlists from your Liked Songs.", msg.created)
-			return m, m.loadLibraryCmd() // refresh the sidebar with the new playlists
+			m.status = organizeSummary(msg.created, msg.updated)
+			return m, m.loadLibraryCmd() // refresh the sidebar with the new/updated playlists
 		}
 		m.organizeProg = [2]int{msg.done, msg.total}
 		m.organizeName = msg.name
+		m.organizeUpdate = msg.update
 		return m, waitOrganizeCmd(m.organizeCh)
 
 	case playlistCreatedMsg:
@@ -1261,6 +1267,18 @@ func truncateErr(err error) string {
 		s = s[:i]
 	}
 	return truncate(s, 60)
+}
+
+// organizeSummary phrases the end-of-organize status from the create/update tally.
+func organizeSummary(created, updated int) string {
+	switch {
+	case created > 0 && updated > 0:
+		return fmt.Sprintf("Done — created %d new and updated %d existing genre playlists.", created, updated)
+	case updated > 0:
+		return fmt.Sprintf("Done — updated %d existing genre playlists (only new songs added).", updated)
+	default:
+		return fmt.Sprintf("Done — created %d genre playlists from your Liked Songs.", created)
+	}
 }
 
 func clamp(v, lo, hi int) int {
