@@ -118,6 +118,16 @@ temporary queue. Uses the `playlist-modify-public` / `playlist-modify-private`
 scopes (shared with add-to-playlist; existing users re-authorize once — see
 [ADR-0012](adr/0012-library-mutations.md)). No library index needed.
 
+### Organize Liked Songs by genre
+
+Ask *"group every song in my Liked Songs into playlists by genre"* and AudioPulse
+groups your saved tracks into coarse genre buckets (genre comes from each track's
+primary **artist** — Spotify doesn't tag tracks), previews the playlists it would
+create, and on your confirmation makes one playlist per genre (`Liked: Rock`,
+`Liked: Hip-Hop`, …). Deterministic — the model only routes the request. Buckets
+smaller than 4 tracks fold into `Liked: Other`. Reuses the `playlist-modify-*`
+scopes ([ADR-0016](adr/0016-genre-organize.md)).
+
 ### Smart shuffle
 
 Press **`S`** with a playlist (or any track list) open to build a *smart shuffle*:

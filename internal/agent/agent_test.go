@@ -85,6 +85,7 @@ func TestParseCommandNewActions(t *testing.T) {
 		{`{"action":"smart_shuffle","query":""}`, Command{Action: ActionShuffleAI, Repeat: "off"}},
 		{`{"action":"create_playlist","query":"90s classics"}`, Command{Action: ActionCreatePL, Query: "90s classics", Repeat: "off"}},
 		{`{"action":"create_playlist","query":""}`, Command{Action: ActionUnknown, Repeat: "off"}}, // no theme → unknown
+		{`{"action":"organize_library","query":""}`, Command{Action: ActionOrganize, Repeat: "off"}},
 	}
 	for _, c := range cases {
 		got, err := parseCommand(c.content)

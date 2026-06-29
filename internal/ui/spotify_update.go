@@ -193,6 +193,13 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.vizTicking = false // pause/hidden: let the loop end, restart on resume
 		return m, nil
 
+	case workTickMsg:
+		if !m.recommending {
+			return m, nil // the op finished: let the spinner loop end
+		}
+		m.workFrame++
+		return m, m.workTickCmd()
+
 	case artMsg:
 		if msg.err == nil && msg.url == m.artURL {
 			m.art = msg.art
@@ -425,6 +432,42 @@ func (m Spotify) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("Smart shuffle — %d fresh songs like “%s”.", len(msg.tracks), msg.source)
 		return m, m.playSelectedCmd()
 
+	case organizePlanMsg:
+		m.recommending = false // stop the "analyzing" spinner
+		if msg.err != nil {
+			m.err = msg.err
+			m.status = "Couldn't analyze your library: " + truncateErr(msg.err)
+			return m, nil
+		}
+		if len(msg.groups) == 0 {
+			m.status = "Nothing to organize."
+			return m, nil
+		}
+		if msg.meID != "" {
+			m.meID = msg.meID
+		}
+		m.organizeGroups = msg.groups
+		m.organizeTotal = msg.total
+		m.organizeCursor = 0
+		m.organizeState = "preview"
+		m.status = fmt.Sprintf("Analyzed %d Liked Songs → %d genre playlists. Review and confirm.", msg.total, len(msg.groups))
+		return m, nil
+
+	case organizeMsg:
+		if msg.final {
+			m.organizeState = ""
+			if msg.err != nil {
+				m.err = msg.err
+				m.status = fmt.Sprintf("Organize stopped after %d playlists: %s", msg.created, truncateErr(msg.err))
+				return m, nil
+			}
+			m.status = fmt.Sprintf("Done — created %d genre playlists from your Liked Songs.", msg.created)
+			return m, m.loadLibraryCmd() // refresh the sidebar with the new playlists
+		}
+		m.organizeProg = [2]int{msg.done, msg.total}
+		m.organizeName = msg.name
+		return m, waitOrganizeCmd(m.organizeCh)
+
 	case playlistCreatedMsg:
 		m.recommending = false
 		if msg.err != nil {
@@ -527,18 +570,22 @@ func (m Spotify) runAgentCommand(cmd agent.Command) (tea.Model, tea.Cmd) {
 		if m.libIndex == nil {
 			return m.startIndex(&cmd) // build the index first, then recommend
 		}
-		m.recommending = true
 		m.status = "Finding recommendations…"
-		return m, m.recommendCmd(cmd.Query)
+		return m, m.beginWork("Finding recommendations", m.recommendCmd(cmd.Query))
 	case agent.ActionShuffleAI:
 		return m.startSmartShuffle()
 	case agent.ActionCreatePL:
 		if m.recommending {
 			return m, nil
 		}
-		m.recommending = true
 		m.status = "Curating “" + cmd.Query + "” and saving it as a playlist…"
-		return m, m.createPlaylistCmd(cmd.Query)
+		return m, m.beginWork("Creating “"+cmd.Query+"”", m.createPlaylistCmd(cmd.Query))
+	case agent.ActionOrganize:
+		if m.recommending || m.organizeState != "" {
+			return m, nil
+		}
+		m.status = "Analyzing your Liked Songs by genre…"
+		return m, m.beginWork("Analyzing your Liked Songs by genre", m.planOrganizeCmd())
 	case agent.ActionReindex:
 		return m.startIndex(nil)
 	case agent.ActionAsk:
@@ -576,9 +623,8 @@ func (m Spotify) startSmartShuffle() (tea.Model, tea.Cmd) {
 	if name == "" {
 		name = "this playlist"
 	}
-	m.recommending = true
 	m.status = "Smart shuffling “" + name + "” — finding similar songs…"
-	return m, m.smartShuffleCmd(m.tracks, name)
+	return m, m.beginWork("Smart shuffling “"+name+"”", m.smartShuffleCmd(m.tracks, name))
 }
 
 // openAddToPlaylist opens the playlist picker for the selected (or playing)
@@ -722,6 +768,43 @@ func (m Spotify) handleSpotifyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.chatInput, cmd = m.chatInput.Update(msg)
 		return m, cmd
+	}
+
+	// Genre-organize preview: scroll the bucket list, enter creates the
+	// playlists, esc cancels. (The "running" phase owns no keys — it just streams
+	// progress.)
+	if m.organizeState == "preview" {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc", "q":
+			m.organizeState = ""
+			m.status = "Organize cancelled — no playlists created."
+			return m, nil
+		case "up", "k", "ctrl+p":
+			if m.organizeCursor > 0 {
+				m.organizeCursor--
+			}
+			return m, nil
+		case "down", "j", "ctrl+n":
+			if m.organizeCursor < len(m.organizeGroups)-1 {
+				m.organizeCursor++
+			}
+			return m, nil
+		case "enter":
+			if m.meID == "" {
+				m.status = "Couldn't determine your Spotify account — try again."
+				m.organizeState = ""
+				return m, nil
+			}
+			m.organizeState = "running"
+			m.organizeProg = [2]int{0, len(m.organizeGroups)}
+			m.organizeName = ""
+			m.status = "Creating your genre playlists…"
+			m.organizeCh = startOrganize(m.client, m.meID, m.organizeGroups)
+			return m, waitOrganizeCmd(m.organizeCh)
+		}
+		return m, nil
 	}
 
 	// Add-to-playlist picker: navigate the list, enter saves, esc cancels.

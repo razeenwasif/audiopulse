@@ -195,7 +195,20 @@ type Spotify struct {
 	idxProg      [2]int // done, total during a build
 	idxCh        <-chan idxEvent
 	pendingCmd   *agent.Command // recommend/ask to run once the index is built
-	recommending bool
+	recommending bool           // a long agent music op (recommend/shuffle/create) is in flight
+	workLabel    string         // headline for the "working" overlay while recommending
+	workFrame    int            // spinner animation frame
+
+	// Genre organize (NL: "group my liked songs by genre"). Two phases: a plan
+	// (preview of genre buckets) the user confirms, then a background run that
+	// creates one playlist per bucket.
+	organizeState  string // "" | "preview" | "running"
+	organizeGroups []library.GenreGroup
+	organizeTotal  int    // liked tracks analyzed
+	organizeCursor int    // preview scroll
+	organizeProg   [2]int // done, total playlists during a run
+	organizeName   string // bucket currently being created
+	organizeCh     <-chan organizeEvent
 
 	// Add-to-playlist picker (opened with P): choose which of your editable
 	// playlists to save the selected/playing track to.
@@ -371,6 +384,7 @@ type artMsg struct {
 }
 type spotifyTickMsg time.Time
 type vizTickMsg time.Time
+type workTickMsg time.Time
 type exportGatheredMsg struct {
 	uris []string
 	dir  string
@@ -439,6 +453,27 @@ type smartShuffleMsg struct {
 	err    error
 }
 
+// organizePlanMsg carries the genre-bucket plan to preview (or an error).
+type organizePlanMsg struct {
+	groups []library.GenreGroup
+	total  int
+	meID   string
+	err    error
+}
+
+// organizeEvent is one step of the background organize run: progress (creating
+// playlist done/total, name) or a terminal event (created count or error).
+type organizeEvent struct {
+	done, total int
+	name        string
+	created     int
+	final       bool
+	err         error
+}
+
+// organizeMsg delivers an organizeEvent into the update loop.
+type organizeMsg organizeEvent
+
 // playlistCreatedMsg reports the result of curating + saving a new playlist.
 type playlistCreatedMsg struct {
 	request     string
@@ -491,6 +526,30 @@ const vizFrameRate = 120 * time.Millisecond
 
 func (m Spotify) vizTickCmd() tea.Cmd {
 	return tea.Tick(vizFrameRate, func(t time.Time) tea.Msg { return vizTickMsg(t) })
+}
+
+// workTickRate is the spinner cadence for the "working" overlay.
+const workTickRate = 110 * time.Millisecond
+
+func (m Spotify) workTickCmd() tea.Cmd {
+	return tea.Tick(workTickRate, func(t time.Time) tea.Msg { return workTickMsg(t) })
+}
+
+// beginWork marks a long agent music op as running, sets the overlay headline,
+// and returns the work command batched with the spinner tick so the user sees
+// immediate, animated "working…" feedback.
+func (m *Spotify) beginWork(label string, work tea.Cmd) tea.Cmd {
+	m.recommending = true
+	m.workLabel = label
+	m.workFrame = 0
+	return tea.Batch(work, m.workTickCmd())
+}
+
+// spinnerFrames is the braille spinner cycle for the working overlay.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func (m Spotify) spinner() string {
+	return spinnerFrames[m.workFrame%len(spinnerFrames)]
 }
 
 // isPlaying reports whether a track is actively playing.
@@ -1387,6 +1446,102 @@ func (m Spotify) createPlaylistCmd(request string) tea.Cmd {
 			return playlistCreatedMsg{request: request, name: name, playlistID: plID, playlistURI: plURI, err: err}
 		}
 		return playlistCreatedMsg{request: request, name: name, playlistID: plID, playlistURI: plURI, tracks: tracks}
+	}
+}
+
+// organizeMinBucket is the smallest genre bucket that gets its own playlist;
+// smaller buckets are merged into "Other" (avoids a pile of tiny playlists).
+const organizeMinBucket = 4
+
+// planOrganizeCmd pages all Liked Songs, looks up each track's genre (via its
+// primary artist), and groups them into coarse genre buckets — the plan the user
+// previews before any playlist is created.
+func (m Spotify) planOrganizeCmd() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+		defer cancel()
+
+		var tracks []spotify.Track
+		for offset := 0; ; {
+			page, err := client.LikedSongsPage(ctx, offset)
+			if err != nil {
+				return organizePlanMsg{err: err}
+			}
+			tracks = append(tracks, page.Tracks...)
+			if !page.HasMore() || len(tracks) >= maxTrackItems {
+				break
+			}
+			offset = page.NextOffset()
+		}
+		if len(tracks) == 0 {
+			return organizePlanMsg{err: errors.New("you have no Liked Songs to organize")}
+		}
+
+		seen := make(map[zspotify.ID]bool)
+		var ids []zspotify.ID
+		for _, t := range tracks {
+			if t.ArtistID != "" && !seen[t.ArtistID] {
+				seen[t.ArtistID] = true
+				ids = append(ids, t.ArtistID)
+			}
+		}
+		genres, err := client.ArtistGenres(ctx, ids)
+		if err != nil {
+			return organizePlanMsg{err: err}
+		}
+		meID, _ := client.MeID(ctx)
+		groups := library.BuildGenreGroups(tracks, genres, organizeMinBucket)
+		return organizePlanMsg{groups: groups, total: len(tracks), meID: meID}
+	}
+}
+
+// organizePlaylistPrefix labels the auto-generated genre playlists so they're
+// identifiable and grouped together in the sidebar.
+const organizePlaylistPrefix = "Liked: "
+
+// startOrganize creates one playlist per genre group on a background goroutine,
+// streaming progress then a terminal event (mirrors the index-build pattern).
+func startOrganize(client *spotify.Client, meID string, groups []library.GenreGroup) <-chan organizeEvent {
+	ch := make(chan organizeEvent, 64)
+	go func() {
+		defer close(ch)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		created := 0
+		for i, g := range groups {
+			ch <- organizeEvent{done: i, total: len(groups), name: g.Name}
+			plID, _, err := client.CreatePlaylist(ctx, meID, organizePlaylistPrefix+g.Name,
+				"Auto-sorted from your Liked Songs by AudioPulse", false)
+			if err != nil {
+				ch <- organizeEvent{final: true, created: created, err: err}
+				return
+			}
+			ids := make([]zspotify.ID, 0, len(g.Tracks))
+			for _, t := range g.Tracks {
+				if t.ID != "" {
+					ids = append(ids, t.ID)
+				}
+			}
+			if err := client.AddTracksToPlaylist(ctx, plID, ids); err != nil {
+				ch <- organizeEvent{final: true, created: created, err: err}
+				return
+			}
+			created++
+		}
+		ch <- organizeEvent{done: len(groups), total: len(groups), created: created, final: true}
+	}()
+	return ch
+}
+
+// waitOrganizeCmd blocks for the next organize-run event.
+func waitOrganizeCmd(ch <-chan organizeEvent) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return organizeMsg{final: true, err: errIndexClosed}
+		}
+		return organizeMsg(ev)
 	}
 }
 

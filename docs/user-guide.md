@@ -139,6 +139,18 @@ plays a temporary queue, while "create/make/save a playlist" actually saves one
 you'll find in Spotify afterwards. It works by voice too. (Don't want it? Delete
 it from Spotify like any playlist.)
 
+**Organize Liked Songs by genre:** ask *"group every song in my Liked Songs into
+playlists by genre"* (or *"sort my saved songs by genre"*) and AudioPulse reads
+each track's genre — Spotify stores genre on the **artist**, so it's taken from
+each song's primary artist — buckets your whole library into coarse genres, and
+shows a **preview** of the playlists it would make ("Liked: Rock — 80, Liked:
+Hip-Hop — 120, … Liked: Other — 12"). Press `↵` to create them all (one playlist
+per genre, every song filed in, with a progress bar) or `esc` to cancel — nothing
+is created until you confirm. Tiny genres are merged into "Other" so you don't get
+a pile of one-song playlists. The grouping is exact (no AI guessing); the model
+only interprets your request. Re-running makes a fresh set, so delete the old
+"Liked: …" playlists first if you redo it.
+
 **Smart shuffle (`S`):** open a playlist (or Liked Songs / any track list), then
 press `S` to build a *smart shuffle* — a fresh queue of songs that **fit that
 playlist's vibe but aren't already in it**, then plays it. Unlike plain shuffle
