@@ -10,12 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Organize Liked Songs into genre playlists** — ask the assistant (`:` or voice)
   *"group every song in my Liked Songs into playlists by genre"* and AudioPulse
-  reads each track's genre (from its primary artist), groups your whole library
-  into coarse genre buckets, **shows a preview** (e.g. "Liked: Rock 80, Liked:
-  Hip-Hop 120, …"), and on confirmation creates one playlist per genre and files
-  every song into it — with a live progress bar. Deterministic (no LLM guessing);
-  the model is only used to understand the request. Reuses the `playlist-modify-*`
-  scopes. See [ADR-0016](docs/adr/0016-genre-organize.md).
+  reads each track's genre (from its artists), groups your whole library into
+  coarse genre buckets by majority vote, **shows a preview** (e.g. "Liked: Rock 80,
+  Liked: Hip-Hop 120, …"), and on confirmation files every song into one playlist
+  per genre — with a live progress bar. **Re-running updates the existing
+  "Liked: …" playlists** (only new songs added) instead of duplicating them.
+  Deterministic (no LLM guessing); the model only interprets the request. Reuses
+  the `playlist-modify-*` scopes. See [ADR-0016](docs/adr/0016-genre-organize.md).
 - **"Working…" spinner** for the AI music operations (recommend, smart shuffle,
   create playlist). These take ~30–60s (local model + per-song Search) with no
   prior visual cue beyond the status line; now an animated overlay makes it

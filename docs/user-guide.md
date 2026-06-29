@@ -144,12 +144,16 @@ playlists by genre"* (or *"sort my saved songs by genre"*) and AudioPulse reads
 each track's genre — Spotify stores genre on the **artist**, so it's taken from
 each song's primary artist — buckets your whole library into coarse genres, and
 shows a **preview** of the playlists it would make ("Liked: Rock — 80, Liked:
-Hip-Hop — 120, … Liked: Other — 12"). Press `↵` to create them all (one playlist
-per genre, every song filed in, with a progress bar) or `esc` to cancel — nothing
-is created until you confirm. Tiny genres are merged into "Other" so you don't get
-a pile of one-song playlists. The grouping is exact (no AI guessing); the model
-only interprets your request. Re-running makes a fresh set, so delete the old
-"Liked: …" playlists first if you redo it.
+Hip-Hop — 120, … Liked: Other — 12"). Press `↵` to file them all (one playlist
+per genre, with a progress bar) or `esc` to cancel — nothing is created until you
+confirm. Tiny genres are merged into "Liked: Other" so you don't get a pile of
+one-song playlists. The grouping is exact (no AI guessing); the model only
+interprets your request. **Re-running updates the existing "Liked: …" playlists**
+(adding only songs that aren't already in them) rather than duplicating — the
+preview tags which buckets will be updated. A genre is decided by majority vote
+across a track's artists; **artists Spotify hasn't tagged with any genre** (common
+for game soundtracks, indie/niche, and VTuber music) land in "Liked: Other", and
+local-file likes can't be added to playlists (they're reported, not lost).
 
 **Smart shuffle (`S`):** open a playlist (or Liked Songs / any track list), then
 press `S` to build a *smart shuffle* — a fresh queue of songs that **fit that

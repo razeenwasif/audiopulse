@@ -72,6 +72,33 @@ ADR-0012 — no new permission.
 - Re-running creates a fresh set of "Liked: …" playlists (no dedupe/update of a
   previous run) — documented.
 
+## Update (2026-06-29): accuracy fixes + idempotent re-runs
+
+First real-library run surfaced two problems: songs in the wrong genre, and a huge
+"Other". Fixes:
+
+- **The batch artists endpoint returns misaligned genres.** `GET /v1/artists?ids=`
+  (and zmb3's `GetArtists`) returned each artist's `id`/`name` correctly but the
+  `genres` array shifted to a neighbouring artist — Evanescence's id paired with
+  Motown genres — which scrambled nearly everything (verified against the raw
+  bytes: the batch response itself is shifted; the **single-artist** endpoint is
+  correct). `ArtistGenres` now fetches **one artist at a time** through a bounded
+  worker pool (12) on the retrying client. This was the dominant cause of
+  wrong-genre placements.
+- **Vote across all of a track's artists.** Genre is now decided by majority vote
+  over the union of every artist's tags on the track (`GenreBucket` tallies
+  buckets, ties broken by rule priority), not first-match on the primary artist —
+  so "pop rap" + "dance pop" + "pop" → Pop, and a featured artist's tags can rescue
+  an untagged lead. The keyword rule list was also expanded.
+- **"Other" is mostly untagged artists.** ~50% of one test library's artists have
+  *no* Spotify genre tags (game OSTs, vtubers, niche creators); those legitimately
+  fall to "Other". Local-file likes (no track id) can't be playlisted and are
+  counted/reported separately, not silently dropped.
+- **Idempotent re-runs.** A genre whose `"Liked: <Genre>"` playlist already exists
+  (owned/collaborative) is **updated** — only songs not already in it are added
+  (deduped via `PlaylistTrackIDs`) — instead of creating a duplicate. The preview
+  marks which buckets are "update" and the run reports created vs updated.
+
 ## Alternatives considered
 - **LLM classifies each track's genre** — slow (500 calls), non-deterministic, and
   hallucination-prone when the model doesn't know a track. Artist genres are

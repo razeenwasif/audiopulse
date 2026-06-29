@@ -4,6 +4,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -739,6 +740,11 @@ func TestCreatePlaylistFlow(t *testing.T) {
 	}
 }
 
+// rtFunc is an http.RoundTripper that lets a test stub out network calls.
+type rtFunc func(*http.Request) (*http.Response, error)
+
+func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
 func TestOrganizeByGenreFlow(t *testing.T) {
 	key := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
 
@@ -771,8 +777,12 @@ func TestOrganizeByGenreFlow(t *testing.T) {
 		t.Errorf("esc should cancel the preview; state=%q", cc.(Spotify).organizeState)
 	}
 
-	// Enter starts the run (empty groups → the goroutine touches no client).
+	// Enter starts the run. Use an offline stub client so the background goroutine
+	// fails fast instead of hitting the network (or panicking on a nil client).
 	starter := sampleSpotify()
+	starter.client = spotify.New(&http.Client{Transport: rtFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("offline")
+	})})
 	starter.organizeState = "preview"
 	starter.meID = "user1"
 	mm, cmd = starter.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -782,6 +792,14 @@ func TestOrganizeByGenreFlow(t *testing.T) {
 	}
 	if !strings.Contains(run.View(), "Creating genre playlists") {
 		t.Error("running overlay should show progress")
+	}
+
+	// Re-run summary phrasing.
+	if s := organizeSummary(3, 2); !strings.Contains(s, "created 3 new and updated 2") {
+		t.Errorf("summary(create+update) = %q", s)
+	}
+	if s := organizeSummary(0, 4); !strings.Contains(s, "updated 4 existing") {
+		t.Errorf("summary(update only) = %q", s)
 	}
 
 	// Progress + terminal handlers (built directly, no live goroutine).

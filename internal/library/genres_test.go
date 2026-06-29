@@ -15,9 +15,10 @@ func TestGenreBucket(t *testing.T) {
 	}{
 		{[]string{"australian indie rock"}, "Indie"}, // indie before rock
 		{[]string{"classic rock", "album rock"}, "Rock"},
-		{[]string{"k-pop", "pop"}, "K-Pop"},       // niche before generic pop
-		{[]string{"dance pop", "pop"}, "Pop"},     // no bare "dance" → stays Pop
-		{[]string{"electro house"}, "Electronic"}, // electro matches
+		{[]string{"k-pop", "k-pop boy group", "pop"}, "K-Pop"}, // 2 k-pop vs 1 pop
+		{[]string{"dance pop", "pop"}, "Pop"},                  // no bare "dance" → stays Pop
+		{[]string{"pop rap", "dance pop", "pop"}, "Pop"},       // vote: Pop 2 / Hip-Hop 1
+		{[]string{"electro house"}, "Electronic"},              // electro matches
 		{[]string{"conscious hip hop", "rap"}, "Hip-Hop"},
 		{[]string{"neo soul"}, "R&B / Soul"},
 		{[]string{"melodic phonk"}, "Phonk"},
@@ -63,5 +64,22 @@ func TestBuildGenreGroups(t *testing.T) {
 	// minBucket<=1 keeps every bucket separate.
 	if g := BuildGenreGroups(tracks, genres, 1); len(g) != 4 {
 		t.Errorf("minBucket=1 should keep Rock/Pop/Jazz/Other = 4 groups, got %d", len(g))
+	}
+}
+
+func TestBuildGenreGroupsUnionsAllArtists(t *testing.T) {
+	// A track with two artists: a featured rapper (no genre) and a pop singer.
+	// The union over both artists' genres should still classify it as Pop.
+	track := spotify.Track{
+		ID:        "x",
+		ArtistIDs: []zspotify.ID{"feat", "popstar"},
+	}
+	genres := map[zspotify.ID][]string{
+		"popstar": {"dance pop", "pop"},
+		// "feat" has no genres
+	}
+	g := BuildGenreGroups([]spotify.Track{track}, genres, 1)
+	if len(g) != 1 || g[0].Name != "Pop" {
+		t.Errorf("union over all artists should bucket as Pop, got %+v", g)
 	}
 }
