@@ -141,18 +141,69 @@ struct PairingScanner: UIViewControllerRepresentable {
     let cancel: () -> Void
 
     func makeUIViewController(context: Context) -> UINavigationController {
-        let scanner = DataScannerViewController(recognizedDataTypes: [.barcode(symbologies: [.qr])],
-                                                qualityLevel: .balanced, isHighlightingEnabled: true)
-        scanner.delegate = context.coordinator
-        scanner.navigationItem.title = "Scan Fairy’s pairing code"
-        scanner.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { _ in cancel() })
-        try? scanner.startScanning()
-        let nav = UINavigationController(rootViewController: scanner)
+        let host = ScannerHost(delegate: context.coordinator, cancel: cancel)
+        let nav = UINavigationController(rootViewController: host)
         nav.overrideUserInterfaceStyle = .dark
         return nav
     }
 
     func updateUIViewController(_ controller: UINavigationController, context: Context) {}
+
+    /// Holds the scanner and starts it only once it's on screen: VisionKit's
+    /// scanner shows the camera but recognises nothing if started earlier.
+    final class ScannerHost: UIViewController {
+        private let scanner = DataScannerViewController(recognizedDataTypes: [.barcode(symbologies: [.qr])],
+                                                        qualityLevel: .balanced, isHighlightingEnabled: true)
+        private let note = UILabel()
+
+        init(delegate: DataScannerViewControllerDelegate, cancel: @escaping () -> Void) {
+            super.init(nibName: nil, bundle: nil)
+            scanner.delegate = delegate
+            navigationItem.title = "Scan Fairy’s pairing code"
+            navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { _ in cancel() })
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+            addChild(scanner)
+            scanner.view.frame = view.bounds
+            scanner.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.addSubview(scanner.view)
+            scanner.didMove(toParent: self)
+            note.textColor = .white
+            note.numberOfLines = 0
+            note.textAlignment = .center
+            note.font = .systemFont(ofSize: 15, weight: .medium)
+            note.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(note)
+            NSLayoutConstraint.activate([
+                note.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+                note.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+                note.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+            ])
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard DataScannerViewController.isAvailable else {
+                note.text = "The camera isn’t available. Allow AudioPulse to use it in Settings, or paste the pairing link instead."
+                return
+            }
+            do {
+                try scanner.startScanning()
+                note.text = "Point at the code in Fairy → Settings → Phone."
+            } catch {
+                note.text = "The scanner couldn’t start: \(error.localizedDescription)"
+            }
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            scanner.stopScanning()
+        }
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(found: found) }
 
