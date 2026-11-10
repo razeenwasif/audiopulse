@@ -72,6 +72,7 @@ struct PhoneLibraryView: View {
             .padding(.top, 8)
         }
         .scrollIndicators(.never)
+        .contentMargins(.bottom, PhoneLayout.bottomClearance, for: .scrollContent)
         .background(GlowBackdrop(primary: UnitPoint(x: 0.95, y: 0), secondary: UnitPoint(x: 0, y: 1), strength: 0.55))
     }
 }
@@ -204,6 +205,7 @@ struct PhonePlaylistView: View {
             .padding(.top, 8)
         }
         .scrollIndicators(.never)
+        .contentMargins(.bottom, PhoneLayout.bottomClearance, for: .scrollContent)
         .background(GlowBackdrop(primary: UnitPoint(x: 0.5, y: 0.1), secondary: UnitPoint(x: 0, y: 1), strength: 0.9))
     }
 }

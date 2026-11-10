@@ -79,22 +79,25 @@ struct PhoneHomeView: View {
                 }
                 }
 
-                if !library.picks.isEmpty {
+                if !library.recent.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(library.source == .sample ? "Because you played Low Tide" : "Jump back in")
                             .font(PulseFont.display(22, weight: .bold)).tracking(-0.32)
                             .foregroundStyle(Pulse.text)
-                        ForEach(library.picks.prefix(4)) { t in
-                            QueueRow(track: t) {
-                                if library.source == .sample {
-                                    player.play(t, in: MockLibrary.nightDrive)
-                                } else {
-                                    player.play(t, in: Playlist(id: "recent", name: "Recently played", initials: "RP",
-                                                               badgeColor: 0x1E8F62, badgeOnDark: true, artwork: t.artwork,
-                                                               tracks: library.picks))
+                        ScrollView(.horizontal) {
+                            LazyHStack(spacing: 12) {
+                                ForEach(library.recent) { t in
+                                    RecentCard(track: t, isCurrent: player.current.id == t.id && player.isPlaying) {
+                                        playRecent(t)
+                                    }
                                 }
                             }
+                            .scrollTargetLayout()
                         }
+                        .scrollTargetBehavior(.viewAligned)
+                        .scrollIndicators(.never)
+                        .contentMargins(.horizontal, 20, for: .scrollContent)
+                        .padding(.horizontal, -20)
                     }
                 }
             }
@@ -102,7 +105,17 @@ struct PhoneHomeView: View {
             .padding(.top, 8)
         }
         .scrollIndicators(.never)
+        .contentMargins(.bottom, PhoneLayout.bottomClearance, for: .scrollContent)
         .background(GlowBackdrop(primary: UnitPoint(x: 0, y: 0), secondary: UnitPoint(x: 1, y: 0.6), strength: 0.6))
+    }
+
+    private func playRecent(_ t: Track) {
+        if library.source == .sample {
+            player.play(t, in: MockLibrary.nightDrive)
+        } else {
+            player.play(t, in: Playlist(id: "recent", name: "Recently played", initials: "RP", badgeColor: 0x1E8F62,
+                                        badgeOnDark: true, artwork: t.artwork, tracks: library.recent))
+        }
     }
 
     private var greeting: String {
@@ -132,4 +145,35 @@ struct QuickTile: View {
         }
         .buttonStyle(PlainPressStyle())
     }
+}
+
+/// A song card in the horizontal "Jump back in" row.
+struct RecentCard: View {
+    let track: Track
+    let isCurrent: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                ArtworkView(artwork: track.artwork, cornerRadius: 14)
+                    .frame(width: 140, height: 140)
+                    .overlay(alignment: .bottomTrailing) {
+                        if isCurrent { NowPlayingBars().padding(10) }
+                    }
+                Text(track.title).font(.pulseBody(14, weight: .semibold))
+                    .foregroundStyle(isCurrent ? Pulse.accent : Pulse.text).lineLimit(1)
+                Text(track.artist).font(.pulseBody(12)).foregroundStyle(Pulse.textTertiary).lineLimit(1)
+            }
+            .frame(width: 140, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainPressStyle())
+        .accessibilityLabel("Play \(track.title) by \(track.artist)")
+    }
+}
+
+/// Space kept below scrolling content so it clears the mini-player and tab bar.
+enum PhoneLayout {
+    static let bottomClearance: CGFloat = 170
 }

@@ -39,7 +39,6 @@ struct PhoneRootView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: 150) }
 
             VStack(spacing: 8) {
                 PhoneMiniPlayer()
