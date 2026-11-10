@@ -40,7 +40,7 @@ struct MacFullScreenLyrics: View {
                             .lineLimit(2)
                             .minimumScaleFactor(0.5)
                             .foregroundStyle(Pulse.text)
-                        Text("\(player.current.artist) · \(player.current.album)")
+                        Text(player.current.album.isEmpty ? player.current.artist : "\(player.current.artist) · \(player.current.album)")
                             .font(.pulseBody(18)).foregroundStyle(Pulse.textSecondary)
                     }
                     .frame(maxWidth: 400)
@@ -55,8 +55,9 @@ struct MacFullScreenLyrics: View {
                             }
                         default:
                             VStack(alignment: .leading, spacing: 10) {
-                                Text("Written by Marlow Vance").font(PulseFont.display(28, weight: .bold))
-                                Text("Produced by Haru Sato · Mixed at Tidewater").font(.pulseBody(16)).foregroundStyle(Pulse.textSecondary)
+                                Text(player.current.artist).font(PulseFont.display(28, weight: .bold))
+                                Text(player.current.album.isEmpty ? "Single" : "From \(player.current.album)")
+                                    .font(.pulseBody(16)).foregroundStyle(Pulse.textSecondary)
                             }
                         }
                     }

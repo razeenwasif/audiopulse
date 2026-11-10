@@ -24,12 +24,33 @@ open AudioPulse.xcodeproj  # schemes: AudioPulse-macOS, AudioPulse-iOS
 | `macOS/` | Sidebar, Home, Now Playing panel, playlist, Ask palette (⌘K), full-screen lyrics (⌘L) |
 | `iOS/` | Home, Library, playlist, Now Playing, voice Ask, custom tab bar and mini-player |
 
+## Spotify (macOS)
+
+The Mac app plays your own Spotify library (Premium) through librespot:
+
+1. Install librespot once: `make librespot` in the repo root.
+2. Launch the app and follow **Connect Spotify**: paste your Spotify app's
+   Client ID (Redirect URI `http://127.0.0.1:8888/callback`), sign in, then
+   approve the librespot device once in the browser.
+
+Settings are shared with the terminal app in
+`~/Library/Application Support/audiopulse/` (`config.json`, the `librespot/`
+device cache). The Mac app keeps its own token in `mac-token.json` (0600),
+because Spotify rotates refresh tokens. librespot output goes to
+`$TMPDIR/audiopulse-mac-librespot.log` (Settings menu → Open librespot log).
+
+Code lives in `macOS/Spotify/`: PKCE sign-in with a loopback server
+(`SpotifyAuth`), the Web API client (`SpotifyAPI`), the librespot supervisor
+(`LibrespotDevice`), the playback backend (`SpotifyPlayback`) and the
+orchestrator (`SpotifySession`). Lyrics come from LRCLIB.
+
 ## Status
 
-The UI runs on sample data (fictional artists). Playback goes through the
-`PlaybackBackend` protocol in `PlayerModel.swift`; the current backend only
-simulates a clock. Spotify (Web API + librespot) and the local AI assistant
-are not wired in yet.
+- macOS: real library, playback and synced lyrics when connected; the sample
+  library otherwise.
+- iOS: sample data only (librespot cannot run as a separate process there).
+- Ask Pulse still returns canned results; the local Ollama assistant is not
+  wired in yet.
 
 Bricolage Grotesque is bundled under the SIL Open Font License
 (`Shared/Resources/Fonts/OFL.txt`).

@@ -1,8 +1,11 @@
+import AppKit
 import SwiftUI
 
 struct MacSidebar: View {
     @Environment(AppRouter.self) private var router
     @Environment(PlayerModel.self) private var player
+    @Environment(LibraryStore.self) private var library
+    @Environment(SpotifySession.self) private var spotify
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -29,12 +32,12 @@ struct MacSidebar: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("LIBRARY").sectionLabel().padding(.horizontal, 12).padding(.bottom, 6)
                 SidebarRow(icon: "heart", title: "Liked Songs", selected: router.route == .liked,
-                           trailing: .count(MockLibrary.likedCount.formatted())) { router.go(.liked) }
+                           trailing: .count(library.likedCount.formatted())) { router.go(.liked) }
                 SidebarRow(icon: "music.note.list", title: "Playlists", selected: false) {}
                 SidebarRow(icon: "clock", title: "Recently Played", selected: false) {}
                 SidebarRow(icon: "mic", title: "Podcasts", selected: false, trailing: .dot) {}
                 SidebarRow(icon: "square.grid.2x2", title: "Genres", selected: false,
-                           trailing: .count("\(MockLibrary.genres.count)")) {}
+                           trailing: library.genreCount > 0 ? .count("\(library.genreCount)") : .none) {}
                 SidebarRow(icon: "arrow.down.to.line", title: "Downloads", selected: false) {}
             }
 
@@ -50,7 +53,10 @@ struct MacSidebar: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 6)
 
-                ForEach(MockLibrary.playlists) { p in
+                if library.isLoading {
+                    HStack { ProgressDots(); Spacer() }.padding(.horizontal, 12).frame(height: 40)
+                }
+                ForEach(library.playlists) { p in
                     PlaylistSidebarRow(playlist: p,
                                        selected: router.route == .playlist(p.id),
                                        playing: player.context?.id == p.id && player.isPlaying) {
@@ -90,24 +96,38 @@ struct MacSidebar: View {
         .accessibilityElement(children: .combine)
     }
 
+    private var profileMenu: [PulseMenuItem] {
+        var items = [
+            PulseMenuItem(title: "Audio quality: 320 kbps", systemImage: "dial.medium") {},
+            PulseMenuItem(title: "Open librespot log", systemImage: "doc.text.magnifyingglass") {
+                NSWorkspace.shared.open(SpotifyConfig.librespotLog)
+            },
+        ]
+        if spotify.isConnected {
+            items.append(PulseMenuItem(title: "Sign out of Spotify", systemImage: "rectangle.portrait.and.arrow.right",
+                                       destructive: true) { spotify.signOut() })
+        } else {
+            items.insert(PulseMenuItem(title: "Connect Spotify…", systemImage: "person.crop.circle.badge.checkmark") {
+                spotify.dismissed = false
+                spotify.retry()
+            }, at: 0)
+        }
+        return items
+    }
+
     private var profile: some View {
         HStack(spacing: 12) {
-            Text("MH")
+            Text(library.userInitials)
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(Pulse.text)
                 .frame(width: 40, height: 40)
                 .background(Circle().fill(Pulse.forest))
             VStack(alignment: .leading, spacing: 1) {
-                Text("Mika Hart").font(.pulseBody(15, weight: .semibold)).foregroundStyle(Pulse.text)
-                Text("Spotify Premium").font(.pulseBody(13)).foregroundStyle(Pulse.textTertiary)
+                Text(library.userName).font(.pulseBody(15, weight: .semibold)).foregroundStyle(Pulse.text).lineLimit(1)
+                Text(library.userDetail).font(.pulseBody(13)).foregroundStyle(Pulse.textTertiary).lineLimit(1)
             }
             Spacer()
-            PulseMenuButton(items: [
-                PulseMenuItem(title: "Settings", systemImage: "gearshape", shortcut: "⌘,") {},
-                PulseMenuItem(title: "Audio quality: 320 kbps", systemImage: "dial.medium") {},
-                PulseMenuItem(title: "Local AI model", systemImage: "cpu") {},
-                PulseMenuItem(title: "Sign out", systemImage: "rectangle.portrait.and.arrow.right", destructive: true) {},
-            ], alignTrailing: true, accessibilityLabel: "Settings") {
+            PulseMenuButton(items: profileMenu, alignTrailing: true, accessibilityLabel: "Settings") {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Pulse.textSecondary)

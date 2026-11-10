@@ -4,6 +4,7 @@ struct MacHomeView: View {
     @Environment(AppRouter.self) private var router
     @Environment(AskModel.self) private var ask
     @Environment(PlayerModel.self) private var player
+    @Environment(LibraryStore.self) private var library
 
     var body: some View {
         ScrollView {
@@ -23,19 +24,31 @@ struct MacHomeView: View {
                     }
                 }
 
-                section("Because you played Low Tide all week", trailing: "See all") {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 18), count: 5), spacing: 18) {
-                        ForEach(MockLibrary.picks) { track in
-                            PickCard(track: track) { player.play(track, in: MockLibrary.nightDrive) }
+                if !library.picks.isEmpty {
+                    section(library.picksTitle, trailing: library.source == .sample ? "See all" : nil) {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 18), count: 5), spacing: 18) {
+                            ForEach(library.picks) { track in
+                                PickCard(track: track) {
+                                    if library.source == .sample {
+                                        player.play(track, in: MockLibrary.nightDrive)
+                                    } else {
+                                        player.play(track, in: Playlist(
+                                            id: "recent", name: "Recently played", initials: "RP", badgeColor: 0x1E8F62,
+                                            badgeOnDark: true, artwork: track.artwork, tracks: library.picks))
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                section("Built from your library") {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), spacing: 14) {
-                        ForEach(MockLibrary.builtFromLibrary, id: \.name) { item in
-                            BuiltCard(name: item.name, why: item.why, art: item.art) {
-                                router.go(.playlist(MockLibrary.rainyIndie.id))
+                if !library.homeCards.isEmpty {
+                    section(library.source == .sample ? "Built from your library" : "Your playlists") {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), spacing: 14) {
+                            ForEach(library.homeCards) { card in
+                                BuiltCard(name: card.name, why: card.detail, art: card.artwork) {
+                                    router.go(.playlist(card.playlistID))
+                                }
                             }
                         }
                     }

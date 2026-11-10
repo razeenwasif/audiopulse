@@ -13,7 +13,14 @@ struct ArtworkView: View {
                 startPoint: UnitPoint(angle: artwork.angle, start: true),
                 endPoint: UnitPoint(angle: artwork.angle, start: false)))
             .overlay {
-                if let h = artwork.highlight {
+                if let url = artwork.imageURL {
+                    AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                        if let image = phase.image {
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                } else if let h = artwork.highlight {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(RadialGradient(colors: [Color(hex: h), Color(hex: h).opacity(0)],
                                              center: UnitPoint(x: 0.3, y: 0.28), startRadius: 0, endRadius: 140))

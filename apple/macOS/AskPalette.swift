@@ -4,6 +4,7 @@ struct AskPalette: View {
     @Environment(AskModel.self) private var ask
     @Environment(AppRouter.self) private var router
     @Environment(PlayerModel.self) private var player
+    @Environment(LibraryStore.self) private var library
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
@@ -125,7 +126,8 @@ struct AskPalette: View {
 
     private func runHighlighted() {
         switch ask.highlighted {
-        case 0: router.go(.playlist(MockLibrary.rainyIndie.id))
+        case 0:
+            if library.playlist(MockLibrary.rainyIndie.id) != nil { router.go(.playlist(MockLibrary.rainyIndie.id)) }
         case 1: break
         default: player.shuffle = true
         }
