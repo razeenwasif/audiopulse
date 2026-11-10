@@ -133,6 +133,12 @@ final class PlayerModel {
 
     func setLikedFromRemote(_ liked: Bool) { withoutEcho { isLiked = liked } }
 
+    /// Fills in cover art fetched after the track started.
+    func refreshArtwork(trackID: String, imageURL: URL) {
+        guard current.id == trackID else { return }
+        withoutEcho { current.artwork.imageURL = imageURL }
+    }
+
     private func withoutEcho(_ body: () -> Void) {
         applying = true
         body()

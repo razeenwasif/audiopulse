@@ -3,6 +3,7 @@ import SwiftUI
 struct PhoneAskView: View {
     @Environment(AskModel.self) private var ask
     @Environment(AppRouter.self) private var router
+    @Environment(LibraryStore.self) private var library
     @FocusState private var typing: Bool
     @State private var showField = false
 
@@ -77,7 +78,9 @@ struct PhoneAskView: View {
                         AskCard(glyph: "plus", title: "Make “Rainy Indie”", detail: "25 songs from your library", primary: true) {
                             close()
                             router.tab = .library
-                            router.phonePath = [.playlist(MockLibrary.rainyIndie.id)]
+                            if library.playlist(MockLibrary.rainyIndie.id) != nil {
+                                router.phonePath = [.playlist(MockLibrary.rainyIndie.id)]
+                            }
                         }
                         AskCard(glyph: "text.line.first.and.arrowtriangle.forward", title: "Queue 10 like this",
                                 detail: "After Low Tide, lower energy", primary: false) { close() }

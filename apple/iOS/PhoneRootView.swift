@@ -3,6 +3,10 @@ import SwiftUI
 struct PhoneRootView: View {
     @Environment(AppRouter.self) private var router
     @Environment(AskModel.self) private var ask
+    @Environment(PlayerModel.self) private var player
+    @Environment(LibraryStore.self) private var library
+    @Environment(PhoneSpotifySession.self) private var spotify
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var router = router
@@ -19,13 +23,22 @@ struct PhoneRootView: View {
                 }
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: Route.self) { route in
-                    if case .playlist(let id) = route, let p = MockLibrary.playlists.first(where: { $0.id == id }) {
-                        PhonePlaylistView(playlist: p)
+                    switch route {
+                    case .playlist(let id):
+                        if let p = library.playlist(id) {
+                            PhonePlaylistView(playlist: p)
+                                .toolbar(.hidden, for: .navigationBar)
+                                .task(id: id) { await library.ensureTracks(for: id) }
+                        }
+                    case .liked:
+                        PhonePlaylistView(playlist: library.liked)
                             .toolbar(.hidden, for: .navigationBar)
+                            .task { await library.ensureTracks(for: LibraryStore.likedID) }
+                    default:
+                        EmptyView()
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: 150) }
 
             VStack(spacing: 8) {
                 PhoneMiniPlayer()
@@ -49,7 +62,42 @@ struct PhoneRootView: View {
         .fullScreenCover(isPresented: $router.showAsk) {
             PhoneAskView()
         }
+        .overlay {
+            if let notice = player.notice {
+                VStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Pulse.accent)
+                        Text(notice).font(.pulseBody(13, weight: .medium)).foregroundStyle(Pulse.text).lineLimit(2)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(Capsule().fill(Color(hex: 0x0E0F0E)))
+                    .overlay(Capsule().strokeBorder(Pulse.hairlineStrong))
+                    .padding(.top, 8)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .task(id: notice) {
+                    try? await Task.sleep(for: .seconds(4))
+                    withAnimation { player.notice = nil }
+                }
+            }
+        }
+        .overlay {
+            if spotify.showConnectScreen {
+                PhoneConnectView().transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: spotify.showConnectScreen)
         .pulseMenuHost()
+        .onAppear { spotify.start() }
+        .onOpenURL { spotify.handle($0) }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: spotify.becameActive()
+            case .background: spotify.resignedActive()
+            default: break
+            }
+        }
     }
 }
 

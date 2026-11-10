@@ -24,6 +24,8 @@ final class LibraryStore {
     var liked: Playlist = LibraryStore.sampleLiked
     var likedCount = MockLibrary.likedCount
     var picks: [Track] = MockLibrary.picks
+    /// Recently played songs (deduplicated, up to 20) for "Jump back in".
+    var recent: [Track] = MockLibrary.tracks
     var picksTitle = "Because you played Low Tide all week"
     var homeCards: [HomeCard] = MockLibrary.builtFromLibrary.map {
         HomeCard(id: $0.name, name: $0.name, detail: $0.why, artwork: $0.art, playlistID: MockLibrary.rainyIndie.id)
@@ -68,8 +70,9 @@ final class LibraryStore {
         self.liked = liked
         self.likedCount = likedCount
         var seen = Set<String>()
-        self.picks = recent.filter { seen.insert($0.id).inserted }.prefix(5).map { $0 }
-        self.picksTitle = picks.isEmpty ? "Jump back in" : "Jump back in"
+        self.recent = recent.filter { seen.insert($0.id).inserted }.prefix(20).map { $0 }
+        self.picks = Array(self.recent.prefix(5))
+        self.picksTitle = "Jump back in"
         self.homeCards = playlists.prefix(3).map {
             HomeCard(id: $0.id, name: $0.name, detail: "\($0.reportedCount ?? $0.tracks.count) songs", artwork: $0.artwork, playlistID: $0.id)
         }
@@ -84,6 +87,7 @@ final class LibraryStore {
         liked = Self.sampleLiked
         likedCount = MockLibrary.likedCount
         picks = MockLibrary.picks
+        recent = MockLibrary.tracks
         picksTitle = "Because you played Low Tide all week"
         homeCards = MockLibrary.builtFromLibrary.map {
             HomeCard(id: $0.name, name: $0.name, detail: $0.why, artwork: $0.art, playlistID: MockLibrary.rainyIndie.id)
