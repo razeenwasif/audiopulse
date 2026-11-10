@@ -207,6 +207,31 @@ final class SpotifyAPI {
 
     func track(_ id: String) async throws -> SPTrack { try await get("tracks/\(id)") }
 
+    /// Best match for a song, or nil.
+    func searchTrack(title: String, artist: String) async throws -> SPTrack? {
+        struct R: Decodable { let tracks: SPPage<SPTrack> }
+        let q = artist.isEmpty ? "track:\(title)" : "track:\(title) artist:\(artist)"
+        if let hit = try await get("search", query: ["q": q, "type": "track", "limit": "1"], as: R.self).tracks.items.first { return hit }
+        // Looser second try: plain words.
+        return try await get("search", query: ["q": "\(title) \(artist)", "type": "track", "limit": "1"], as: R.self).tracks.items.first
+    }
+
+    func createPlaylist(userID: String, name: String, description: String) async throws -> SPPlaylist {
+        let data = try await send("POST", "users/\(userID)/playlists",
+                                  body: ["name": name, "description": description, "public": false])
+        return try JSONDecoder().decode(SPPlaylist.self, from: data)
+    }
+
+    func addTracks(playlistID: String, uris: [String]) async throws {
+        for start in stride(from: 0, to: uris.count, by: 100) {
+            try await send("POST", "playlists/\(playlistID)/tracks", body: ["uris": Array(uris[start..<min(uris.count, start + 100)])])
+        }
+    }
+
+    func addToQueue(uri: String) async throws {
+        try await send("POST", "me/player/queue", query: ["uri": uri])
+    }
+
     func isSaved(_ trackID: String) async throws -> Bool {
         let flags: [Bool] = try await get("me/tracks/contains", query: ["ids": trackID])
         return flags.first ?? false

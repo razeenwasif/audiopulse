@@ -32,6 +32,9 @@ final class LibraryStore {
     }
     var genreCount = MockLibrary.genres.count
     var isLoading = false
+    /// The signed-in Spotify user and API, for actions the assistant takes.
+    var userID: String?
+    var api: SpotifyAPI?
 
     /// Loads a playlist's tracks on demand (set by the Spotify session).
     var trackLoader: ((Playlist) async throws -> [Track])?
@@ -55,6 +58,12 @@ final class LibraryStore {
         } catch {
             update(id) { $0.tracksLoaded = true }
         }
+    }
+
+    /// Puts a playlist the assistant just made at the top of the list.
+    func insertPlaylist(_ playlist: Playlist) {
+        playlists.removeAll { $0.id == playlist.id }
+        playlists.insert(playlist, at: 0)
     }
 
     private func update(_ id: String, _ change: (inout Playlist) -> Void) {
@@ -94,6 +103,8 @@ final class LibraryStore {
         }
         genreCount = MockLibrary.genres.count
         trackLoader = nil
+        userID = nil
+        api = nil
     }
 
     static let sampleLiked = Playlist(

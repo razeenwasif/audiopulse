@@ -273,7 +273,7 @@ func NewSpotify(client *spotify.Client, deviceID, user string, cellAspect float6
 		search:       ti,
 		ask:          ask,
 		chatInput:    chatInput,
-		agent:        agent.New(cfg.OllamaURL, cfg.OllamaModel, cfg.OllamaEmbedModel),
+		agent:        agent.New(cfg.OllamaURL, cfg.OllamaModel, cfg.OllamaEmbedModel).WithAssistant(cfg.Assistant),
 		voiceModel:   cfg.VoiceModel,
 		voiceSource:  cfg.VoiceSource,
 		artW:         w,

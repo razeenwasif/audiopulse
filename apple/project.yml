@@ -23,8 +23,12 @@ targets:
     sources:
       - path: Shared
       - path: macOS
+        excludes:
+          - Info.plist
     settings:
       base:
+        INFOPLIST_FILE: macOS/Info.plist
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: AudioPulse turns what you say into a music request on this Mac.
         PRODUCT_NAME: AudioPulse
         PRODUCT_BUNDLE_IDENTIFIER: dev.audiopulse.mac
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -58,4 +62,5 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSMicrophoneUsageDescription: AudioPulse listens when you tap the mic, so you can ask for music by voice.
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: AudioPulse turns what you say into a music request on this iPhone.
+        INFOPLIST_KEY_NSCameraUsageDescription: To scan Fairy’s pairing code on your Mac.
         TARGETED_DEVICE_FAMILY: "1"

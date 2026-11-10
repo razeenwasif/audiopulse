@@ -76,6 +76,7 @@ type Client struct {
 	baseURL    string
 	http       *http.Client
 	embedModel string
+	assistant  string // AssistantAuto (default), AssistantFairy or AssistantOllama
 
 	mu    sync.Mutex
 	model string // configured, or auto-detected and cached on first use
@@ -208,6 +209,10 @@ type chatOptions struct {
 // jsonMode forces a single JSON object (format:"json"); temp is the sampling
 // temperature.
 func (c *Client) chat(ctx context.Context, msgs []chatMessage, jsonMode bool, temp float64) (string, error) {
+	// Fairy (the user's desktop assistant) takes the request when she's running.
+	if text, handled, err := c.viaFairy(ctx, msgs, jsonMode); handled {
+		return text, err
+	}
 	model, err := c.resolveModel(ctx)
 	if err != nil {
 		return "", err

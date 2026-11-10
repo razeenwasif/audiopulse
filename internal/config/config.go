@@ -52,7 +52,12 @@ type Config struct {
 	// OllamaModel is the local model the AI assistant uses to interpret commands
 	// (e.g. "gemma3:12b"). Empty → auto-detect the first installed gemma* model.
 	OllamaModel string `json:"ollama_model,omitempty"`
+	// Assistant chooses where the AI assistant runs: "auto" (default — Fairy if
+	// she's running on this Mac, otherwise Ollama), "fairy" or "ollama".
+	// Library embeddings always use Ollama.
+	Assistant string `json:"assistant,omitempty"`
 	// OllamaURL overrides the Ollama endpoint. Empty → http://localhost:11434.
+	// A PC's Ollama over Tailscale works too: http://my-pc.tailnet.ts.net:11434.
 	OllamaURL string `json:"ollama_url,omitempty"`
 	// OllamaEmbedModel is the local embedding model used to index the library for
 	// RAG (recommendations + library chat). Empty → "nomic-embed-text".

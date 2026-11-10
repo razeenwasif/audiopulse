@@ -90,11 +90,25 @@ Ollama in `~/.config/audiopulse/config.json`:
 
 | Field          | Default                  | Meaning                                            |
 | -------------- | ------------------------ | -------------------------------------------------- |
+| `assistant`    | `auto`                   | Where requests run: `auto` (Fairy if she's running on this Mac, else Ollama), `fairy` or `ollama` |
 | `ollama_model` | auto-detect first gemma* | Which local model interprets your requests         |
 | `ollama_url`   | `http://localhost:11434` | The Ollama HTTP endpoint                           |
 | `ollama_embed_model` | `nomic-embed-text` | Embedding model for the library index (recommendations) |
 
 `make doctor` reports whether Ollama is installed, reachable, and has a model.
+
+On macOS the config file is `~/Library/Application Support/audiopulse/config.json`
+(Go's user config directory there), not `~/.config`.
+
+**Without a GPU:** if [Fairy](https://github.com/razeenwasif/Lyra) is running on
+your Mac, the assistant uses her instead of Ollama (with `assistant` set to
+`auto` or `fairy`). She runs each request once on her conversation provider
+(Claude, Gemini or ChatGPT) as a tool call, through a private socket in her data
+folder, with no persona and nothing saved as a chat. Requests then go to that
+provider rather than staying on your machine. Library embeddings (the
+recommendations index) still use Ollama; a PC's Ollama over Tailscale works:
+`"ollama_url": "http://my-pc.tailnet.ts.net:11434"` (start it with
+`OLLAMA_HOST=0.0.0.0`).
 
 ### Library recommendations (RAG)
 
