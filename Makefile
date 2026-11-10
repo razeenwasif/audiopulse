@@ -34,9 +34,13 @@ vet:
 fmt:
 	gofmt -w .
 
+# librespot audio backend: ALSA on Linux, rodio (Core Audio / WASAPI) elsewhere.
+# Must match the backend AudioPulse passes at runtime (internal/librespot).
+LIBRESPOT_BACKEND ?= $(if $(filter Linux,$(shell uname -s)),alsa-backend,rodio-backend)
+
 ## librespot: build & install the librespot playback backend (one-time, ~10-15 min)
 librespot:
-	cargo install librespot --locked --no-default-features --features "alsa-backend,rustls-tls-webpki-roots"
+	cargo install librespot --locked --no-default-features --features "$(LIBRESPOT_BACKEND),rustls-tls-webpki-roots"
 
 ## spotdl: install spotDL (used to export your library to local audio files)
 spotdl:
