@@ -6,6 +6,7 @@ struct MacRootView: View {
     @Environment(PlayerModel.self) private var player
     @Environment(LibraryStore.self) private var library
     @Environment(SpotifySession.self) private var spotify
+    @Environment(AskModel.self) private var ask
 
     var body: some View {
         ZStack {
@@ -88,6 +89,8 @@ struct MacRootView: View {
         .pulseMenuHost()
         .onAppear {
             keys.install(player: player, router: router)
+            ask.configure(player: player, library: library)
+            ask.openPlaylist = { id in router.go(.playlist(id)) }
             spotify.start()
         }
         .onDisappear { keys.remove() }

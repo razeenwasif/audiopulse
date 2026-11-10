@@ -22,5 +22,19 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Plain http to a PC's Ollama over Tailscale (MagicDNS names end in ts.net). -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>ts.net</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
 </dict>
 </plist>

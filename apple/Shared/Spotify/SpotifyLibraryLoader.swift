@@ -24,6 +24,8 @@ enum SpotifyLibraryLoader {
         let detail = (me.product == "premium") ? "Spotify Premium" : "Spotify \((me.product ?? "Free").capitalized)"
         library.useSpotify(userName: me.display_name ?? me.id, detail: detail, playlists: playlists,
                            liked: likedPlaylist, likedCount: liked.total, recent: recent.map(Self.track))
+        library.userID = me.id
+        library.api = api
         library.trackLoader = { [weak api] p in
             guard let api else { return [] }
             return try await api.playlistTracks(p.id).map(Self.track)

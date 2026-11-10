@@ -66,14 +66,36 @@ playback, and the Spotify app on the phone plays the audio.
 Sign-in, the Web API client and library loading are shared with macOS
 (`Shared/Spotify/`); the iPhone-specific parts are in `iOS/Spotify/`.
 
+## Ask Pulse (assistant)
+
+Ask Pulse turns a typed or spoken request into a plan in one model call (the
+same actions and rules as the terminal app) and carries it out with Spotify:
+play a song, play or queue recommendations, smart shuffle the current
+playlist, create and save a playlist, or answer a question about your library.
+Speech is recognised with Apple's recogniser, on the device when supported.
+
+It runs on, in order (Automatic) or as chosen:
+
+- **Fairy** — the desktop assistant in `desktop-buddies/Lyra`. On the Mac,
+  through her `audiopulse.sock`; on the iPhone, through her phone link's
+  `/v1/assist` over Tailscale after pairing (Assistant settings → Scan the
+  code), with her certificate pinned. Fairy runs each request once on Claude,
+  Gemini or ChatGPT, with no persona, and nothing is saved as a chat.
+- **Ollama** on a PC with a GPU, over Tailscale
+  (`http://pc.tailnet.ts.net:11434`; the Mac reads `ollama_url` from the shared
+  config).
+
+Requests and a short summary of your library (what's playing, some Liked Songs,
+recent plays, playlist names) go to whichever of these answers.
+
 ## Status
 
 - macOS: real library, playback and synced lyrics when connected; the sample
   library otherwise.
 - iOS: real library and playback through the Spotify app (App Remote) when
   connected; the sample library otherwise.
-- Ask Pulse still returns canned results; the local Ollama assistant is not
-  wired in yet.
+- Ask Pulse runs on Fairy or a PC's Ollama; organising Liked Songs by genre is
+  still terminal-only.
 
 Bricolage Grotesque is bundled under the SIL Open Font License
 (`Shared/Resources/Fonts/OFL.txt`).

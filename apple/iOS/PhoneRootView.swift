@@ -89,7 +89,14 @@ struct PhoneRootView: View {
         }
         .animation(.easeOut(duration: 0.25), value: spotify.showConnectScreen)
         .pulseMenuHost()
-        .onAppear { spotify.start() }
+        .onAppear {
+            ask.configure(player: player, library: library)
+            ask.openPlaylist = { id in
+                router.tab = .library
+                router.phonePath = [.playlist(id)]
+            }
+            spotify.start()
+        }
         .onOpenURL { spotify.handle($0) }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
