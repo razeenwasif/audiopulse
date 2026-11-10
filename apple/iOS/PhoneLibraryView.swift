@@ -3,6 +3,8 @@ import SwiftUI
 struct PhoneLibraryView: View {
     @Environment(AppRouter.self) private var router
     @Environment(PlayerModel.self) private var player
+    @Environment(LibraryStore.self) private var library
+    @Environment(PhoneSpotifySession.self) private var spotify
 
     var body: some View {
         ScrollView {
@@ -10,12 +12,8 @@ struct PhoneLibraryView: View {
                 HStack {
                     Text("Library").font(PulseFont.display(40)).tracking(-0.81).foregroundStyle(Pulse.text)
                     Spacer()
-                    PulseMenuButton(items: [
-                        PulseMenuItem(title: "Settings", systemImage: "gearshape") {},
-                        PulseMenuItem(title: "Audio quality: 320 kbps", systemImage: "dial.medium") {},
-                        PulseMenuItem(title: "Sign out", systemImage: "rectangle.portrait.and.arrow.right", destructive: true) {},
-                    ], accessibilityLabel: "Account and settings") {
-                        Text("MH").font(.system(size: 14, weight: .bold)).foregroundStyle(Pulse.text)
+                    PulseMenuButton(items: accountMenu, accessibilityLabel: "Account and settings") {
+                        Text(library.userInitials).font(.system(size: 14, weight: .bold)).foregroundStyle(Pulse.text)
                             .frame(width: 40, height: 40)
                             .background(Circle().fill(Pulse.forest))
                     }
@@ -23,11 +21,13 @@ struct PhoneLibraryView: View {
                 }
 
                 VStack(spacing: 0) {
-                    LibraryRow(icon: "heart", title: "Liked Songs", trailing: MockLibrary.likedCount.formatted(), selected: true)
+                    LibraryRow(icon: "heart", title: "Liked Songs", trailing: library.likedCount.formatted(), selected: true) {
+                        router.phonePath.append(.liked)
+                    }
                     LibraryRow(icon: "music.note.list", title: "Playlists")
                     LibraryRow(icon: "clock", title: "Recently Played")
                     LibraryRow(icon: "mic", title: "Podcasts", dot: true)
-                    LibraryRow(icon: "square.grid.2x2", title: "Genres", trailing: "\(MockLibrary.genres.count)")
+                    LibraryRow(icon: "square.grid.2x2", title: "Genres", trailing: library.genreCount > 0 ? "\(library.genreCount)" : nil)
                     LibraryRow(icon: "arrow.down.to.line", title: "Downloads")
                 }
                 .padding(6)
@@ -46,7 +46,7 @@ struct PhoneLibraryView: View {
                 .padding(.top, 4)
 
                 VStack(spacing: 0) {
-                    ForEach(MockLibrary.playlists) { p in
+                    ForEach(library.playlists) { p in
                         Button { router.phonePath.append(.playlist(p.id)) } label: {
                             HStack(spacing: 12) {
                                 PlaylistAvatar(playlist: p, size: 34)
@@ -76,15 +76,34 @@ struct PhoneLibraryView: View {
     }
 }
 
+extension PhoneLibraryView {
+    var accountMenu: [PulseMenuItem] {
+        var items: [PulseMenuItem] = [
+            PulseMenuItem(title: library.userName, systemImage: "person.crop.circle") {},
+        ]
+        if spotify.isConnected {
+            items.append(PulseMenuItem(title: "Sign out of Spotify", systemImage: "rectangle.portrait.and.arrow.right",
+                                       destructive: true) { spotify.signOut() })
+        } else {
+            items.append(PulseMenuItem(title: "Connect Spotify…", systemImage: "person.crop.circle.badge.checkmark") {
+                spotify.dismissed = false
+                spotify.retry()
+            })
+        }
+        return items
+    }
+}
+
 private struct LibraryRow: View {
     let icon: String
     let title: String
     var trailing: String? = nil
     var dot = false
     var selected = false
+    var action: () -> Void = {}
 
     var body: some View {
-        Button {} label: {
+        Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: icon).font(.system(size: 17, weight: .medium)).frame(width: 24)
                 Text(title).font(.pulseBody(16, weight: .medium))
@@ -137,7 +156,7 @@ struct PhonePlaylistView: View {
                 if let prompt = playlist.prompt {
                     Text("You asked: “\(prompt)”").font(.pulseBody(14)).foregroundStyle(Color(hex: 0xCDD3D0))
                 }
-                Text("\(playlist.tracks.count) songs · \(playlist.totalDuration.longDuration)")
+                Text("\(playlist.trackCount) songs" + (playlist.tracksLoaded ? " · \(playlist.totalDuration.longDuration)" : ""))
                     .font(.pulseBody(13)).foregroundStyle(Pulse.textSecondary)
 
                 HStack(spacing: 10) {
@@ -154,6 +173,13 @@ struct PhonePlaylistView: View {
                     .pulse(.outline)
                 }
 
+                if !playlist.tracksLoaded {
+                    HStack(spacing: 12) {
+                        NowPlayingBars()
+                        Text("Loading songs…").font(.pulseBody(14)).foregroundStyle(Pulse.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 100)
+                }
                 VStack(spacing: 2) {
                     ForEach(playlist.tracks) { t in
                         Button { player.play(t, in: playlist) } label: {

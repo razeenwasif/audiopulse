@@ -4,6 +4,7 @@ struct PhoneHomeView: View {
     @Environment(AppRouter.self) private var router
     @Environment(AskModel.self) private var ask
     @Environment(PlayerModel.self) private var player
+    @Environment(LibraryStore.self) private var library
 
     var body: some View {
         ScrollView {
@@ -14,7 +15,7 @@ struct PhoneHomeView: View {
                         .foregroundStyle(Pulse.text)
                     Spacer()
                     Button { router.tab = .library } label: {
-                        Text("MH").font(.system(size: 14, weight: .bold)).foregroundStyle(Pulse.text)
+                        Text(library.userInitials).font(.system(size: 14, weight: .bold)).foregroundStyle(Pulse.text)
                             .frame(width: 40, height: 40)
                             .background(Circle().fill(Pulse.forest))
                     }
@@ -45,27 +46,28 @@ struct PhoneHomeView: View {
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                     QuickTile(name: "Liked Songs", art: Artwork(colors: [0x1E8F62, 0xB8F5CF], angle: 135), playing: false) {
-                        router.tab = .library
+                        router.phonePath.append(.liked)
                     }
-                    ForEach(MockLibrary.playlists) { p in
+                    ForEach(library.playlists.prefix(5)) { p in
                         QuickTile(name: p.name, art: p.artwork, playing: player.context?.id == p.id && player.isPlaying) {
                             router.phonePath.append(.playlist(p.id))
                         }
                     }
                 }
 
+                if !library.homeCards.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Built from your library")
+                    Text(library.source == .sample ? "Built from your library" : "Your playlists")
                         .font(PulseFont.display(22, weight: .bold)).tracking(-0.32)
                         .foregroundStyle(Pulse.text)
                     ScrollView(.horizontal) {
                         HStack(spacing: 12) {
-                            ForEach(MockLibrary.builtFromLibrary, id: \.name) { item in
-                                Button { router.phonePath.append(.playlist(MockLibrary.rainyIndie.id)) } label: {
+                            ForEach(library.homeCards) { item in
+                                Button { router.phonePath.append(.playlist(item.playlistID)) } label: {
                                     VStack(alignment: .leading, spacing: 8) {
-                                        ArtworkView(artwork: item.art, cornerRadius: 14).frame(width: 140, height: 140)
-                                        Text(item.name).font(.pulseBody(14, weight: .semibold)).foregroundStyle(Pulse.text)
-                                        Text(item.why).font(.pulseBody(12)).foregroundStyle(Pulse.textTertiary).lineLimit(1)
+                                        ArtworkView(artwork: item.artwork, cornerRadius: 14).frame(width: 140, height: 140)
+                                        Text(item.name).font(.pulseBody(14, weight: .semibold)).foregroundStyle(Pulse.text).lineLimit(1)
+                                        Text(item.detail).font(.pulseBody(12)).foregroundStyle(Pulse.textTertiary).lineLimit(1)
                                     }
                                     .frame(width: 140, alignment: .leading)
                                 }
@@ -75,13 +77,24 @@ struct PhoneHomeView: View {
                     }
                     .scrollIndicators(.never)
                 }
+                }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Because you played Low Tide")
-                        .font(PulseFont.display(22, weight: .bold)).tracking(-0.32)
-                        .foregroundStyle(Pulse.text)
-                    ForEach(MockLibrary.picks.prefix(3)) { t in
-                        QueueRow(track: t) { player.play(t, in: MockLibrary.nightDrive) }
+                if !library.picks.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(library.source == .sample ? "Because you played Low Tide" : "Jump back in")
+                            .font(PulseFont.display(22, weight: .bold)).tracking(-0.32)
+                            .foregroundStyle(Pulse.text)
+                        ForEach(library.picks.prefix(4)) { t in
+                            QueueRow(track: t) {
+                                if library.source == .sample {
+                                    player.play(t, in: MockLibrary.nightDrive)
+                                } else {
+                                    player.play(t, in: Playlist(id: "recent", name: "Recently played", initials: "RP",
+                                                               badgeColor: 0x1E8F62, badgeOnDark: true, artwork: t.artwork,
+                                                               tracks: library.picks))
+                                }
+                            }
+                        }
                     }
                 }
             }

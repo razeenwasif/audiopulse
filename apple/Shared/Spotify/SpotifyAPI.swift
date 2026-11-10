@@ -57,6 +57,7 @@ struct SPPlayHistory: Decodable, Sendable { let track: SPTrack }
 struct SPDevice: Decodable, Sendable {
     let id: String?
     let name: String
+    let type: String?
     let is_active: Bool
     let volume_percent: Int?
 }
@@ -203,6 +204,8 @@ final class SpotifyAPI {
         let page: SPPage<SPPlayHistory> = try await get("me/player/recently-played", query: ["limit": "50"])
         return page.items.map(\.track)
     }
+
+    func track(_ id: String) async throws -> SPTrack { try await get("tracks/\(id)") }
 
     func isSaved(_ trackID: String) async throws -> Bool {
         let flags: [Bool] = try await get("me/tracks/contains", query: ["ids": trackID])

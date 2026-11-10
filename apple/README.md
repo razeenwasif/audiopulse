@@ -44,11 +44,34 @@ Code lives in `macOS/Spotify/`: PKCE sign-in with a loopback server
 (`LibrespotDevice`), the playback backend (`SpotifyPlayback`) and the
 orchestrator (`SpotifySession`). Lyrics come from LRCLIB.
 
+## Spotify (iPhone)
+
+The iPhone app uses Spotify's official iOS SDK (App Remote, SwiftPM
+`spotify/ios-sdk` 5.0.1): AudioPulse shows your library and controls
+playback, and the Spotify app on the phone plays the audio.
+
+1. In your Spotify developer app add the Redirect URI
+   `audiopulse://spotify-callback` and the iOS bundle ID `dev.audiopulse.ios`.
+2. Build with your Client ID baked in (or paste it in the app):
+
+   ```bash
+   xcodebuild -project AudioPulse.xcodeproj -scheme AudioPulse-iOS \
+     -destination 'id=<device-udid>' -allowProvisioningUpdates \
+     DEVELOPMENT_TEAM=<team> SPOTIFY_CLIENT_ID=<client-id> build
+   ```
+
+3. Tap **Connect Spotify** (web sign-in sheet), then play something: the first
+   play opens Spotify once to connect, then returns to AudioPulse.
+
+Sign-in, the Web API client and library loading are shared with macOS
+(`Shared/Spotify/`); the iPhone-specific parts are in `iOS/Spotify/`.
+
 ## Status
 
 - macOS: real library, playback and synced lyrics when connected; the sample
   library otherwise.
-- iOS: sample data only (librespot cannot run as a separate process there).
+- iOS: real library and playback through the Spotify app (App Remote) when
+  connected; the sample library otherwise.
 - Ask Pulse still returns canned results; the local Ollama assistant is not
   wired in yet.
 

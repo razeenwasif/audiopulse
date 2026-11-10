@@ -1,7 +1,12 @@
-import AppKit
 import CryptoKit
 import Foundation
+#if os(macOS)
+import AppKit
 import Network
+#else
+import AuthenticationServices
+import UIKit
+#endif
 
 struct SpotifyToken: Codable, Sendable {
     var accessToken: String
@@ -66,13 +71,7 @@ enum SpotifyAuth {
             .init(name: "scope", value: SpotifyConfig.scopes.joined(separator: " ")),
         ]
 
-        let server = LoopbackServer(port: SpotifyConfig.callbackPort)
-        try await server.start()
-        defer { server.stop() }
-
-        _ = await MainActor.run { NSWorkspace.shared.open(comps.url!) }
-
-        let params = try await server.waitForCallback(timeout: 300)
+        let params = try await collectCallback(authorizeURL: comps.url!)
         if let error = params["error"] { throw SpotifyAuthError.denied(error) }
         guard params["state"] == state else { throw SpotifyAuthError.badResponse("state mismatch") }
         guard let code = params["code"] else { throw SpotifyAuthError.badResponse("no authorization code") }
@@ -85,6 +84,53 @@ enum SpotifyAuth {
             "code_verifier": verifier,
         ], previousRefresh: nil)
     }
+
+    #if os(macOS)
+    /// macOS: open the default browser; a loopback server catches the redirect.
+    private static func collectCallback(authorizeURL: URL) async throws -> [String: String] {
+        let server = LoopbackServer(port: SpotifyConfig.callbackPort)
+        try await server.start()
+        defer { server.stop() }
+        _ = await MainActor.run { NSWorkspace.shared.open(authorizeURL) }
+        return try await server.waitForCallback(timeout: 300)
+    }
+    #else
+    /// iOS: an in-app web authentication sheet returns to audiopulse://….
+    @MainActor
+    private static func collectCallback(authorizeURL: URL) async throws -> [String: String] {
+        let anchor = PresentationAnchor()
+        let url: URL = try await withCheckedThrowingContinuation { cont in
+            let session = ASWebAuthenticationSession(
+                url: authorizeURL,
+                callback: .customScheme(SpotifyConfig.callbackScheme)
+            ) { url, error in
+                if let url { cont.resume(returning: url) }
+                else if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
+                    cont.resume(throwing: SpotifyAuthError.cancelled)
+                } else {
+                    cont.resume(throwing: error ?? SpotifyAuthError.cancelled)
+                }
+            }
+            session.presentationContextProvider = anchor
+            session.prefersEphemeralWebBrowserSession = false
+            anchor.session = session
+            if !session.start() { cont.resume(throwing: SpotifyAuthError.badResponse("couldn’t open the sign-in sheet")) }
+        }
+        var params: [String: String] = [:]
+        for item in URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [] {
+            params[item.name] = item.value ?? ""
+        }
+        return params
+    }
+
+    private final class PresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+        var session: ASWebAuthenticationSession?
+        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            return scenes.flatMap(\.windows).first { $0.isKeyWindow } ?? ASPresentationAnchor()
+        }
+    }
+    #endif
 
     static func refresh(_ token: SpotifyToken, clientID: String) async throws -> SpotifyToken {
         try await tokenRequest([
@@ -129,8 +175,9 @@ enum SpotifyAuth {
     }
 }
 
-// MARK: - Loopback server
+// MARK: - Loopback server (macOS)
 
+#if os(macOS)
 /// Minimal one-shot HTTP server on 127.0.0.1 that captures `/callback?…`.
 private final class LoopbackServer: @unchecked Sendable {
     private let port: UInt16
@@ -232,6 +279,8 @@ private final class LoopbackServer: @unchecked Sendable {
         """
     }
 }
+
+#endif
 
 // MARK: - Encoding helpers
 

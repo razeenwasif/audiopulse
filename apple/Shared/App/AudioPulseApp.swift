@@ -8,6 +8,8 @@ struct AudioPulseApp: App {
     @State private var router = AppRouter()
     #if os(macOS)
     @State private var spotify: SpotifySession
+    #else
+    @State private var spotify: PhoneSpotifySession
     #endif
 
     init() {
@@ -18,6 +20,8 @@ struct AudioPulseApp: App {
         _library = State(initialValue: library)
         #if os(macOS)
         _spotify = State(initialValue: SpotifySession(player: player, library: library))
+        #else
+        _spotify = State(initialValue: PhoneSpotifySession(player: player, library: library))
         #endif
     }
 
@@ -58,6 +62,7 @@ struct AudioPulseApp: App {
             PhoneRootView()
                 .environment(player)
                 .environment(library)
+                .environment(spotify)
                 .environment(ask)
                 .environment(router)
                 .preferredColorScheme(.dark)
