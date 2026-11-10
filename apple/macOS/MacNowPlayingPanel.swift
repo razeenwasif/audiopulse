@@ -21,7 +21,7 @@ struct MacNowPlayingPanel: View {
                             .lineLimit(2)
                             .minimumScaleFactor(0.6)
                             .foregroundStyle(Pulse.text)
-                        Text("\(player.current.artist) · \(player.current.album)")
+                        Text(player.current.album.isEmpty ? player.current.artist : "\(player.current.artist) · \(player.current.album)")
                             .font(.pulseBody(15))
                             .foregroundStyle(Pulse.textSecondary)
                     }

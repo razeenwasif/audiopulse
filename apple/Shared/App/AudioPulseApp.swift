@@ -2,12 +2,23 @@ import SwiftUI
 
 @main
 struct AudioPulseApp: App {
-    @State private var player = PlayerModel()
+    @State private var player: PlayerModel
+    @State private var library: LibraryStore
     @State private var ask = AskModel()
     @State private var router = AppRouter()
+    #if os(macOS)
+    @State private var spotify: SpotifySession
+    #endif
 
     init() {
         PulseFont.register()
+        let player = PlayerModel()
+        let library = LibraryStore()
+        _player = State(initialValue: player)
+        _library = State(initialValue: library)
+        #if os(macOS)
+        _spotify = State(initialValue: SpotifySession(player: player, library: library))
+        #endif
     }
 
     var body: some Scene {
@@ -15,6 +26,8 @@ struct AudioPulseApp: App {
         WindowGroup {
             MacRootView()
                 .environment(player)
+                .environment(library)
+                .environment(spotify)
                 .environment(ask)
                 .environment(router)
                 .preferredColorScheme(.dark)
@@ -32,12 +45,19 @@ struct AudioPulseApp: App {
             }
             CommandMenu("Pulse") {
                 Button("Ask Pulse…") { router.openAsk() }.keyboardShortcut("k", modifiers: .command)
+                Divider()
+                if spotify.isConnected {
+                    Button("Sign Out of Spotify") { spotify.signOut() }
+                } else {
+                    Button("Connect Spotify…") { spotify.dismissed = false; spotify.retry() }
+                }
             }
         }
         #else
         WindowGroup {
             PhoneRootView()
                 .environment(player)
+                .environment(library)
                 .environment(ask)
                 .environment(router)
                 .preferredColorScheme(.dark)

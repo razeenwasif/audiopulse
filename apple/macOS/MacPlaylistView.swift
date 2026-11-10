@@ -53,7 +53,7 @@ struct MacPlaylistView: View {
                         .background(Capsule().fill(Pulse.fill))
                         .overlay(Capsule().strokeBorder(Pulse.hairline))
                 }
-                Text("\(playlist.tracks.count) songs · \(playlist.totalDuration.longDuration)" +
+                Text("\(playlist.trackCount) songs" + (playlist.tracksLoaded ? " · \(playlist.totalDuration.longDuration)" : "") +
                      (playlist.prompt != nil ? " · every song already in your library · saved to Spotify" : ""))
                     .font(.pulseBody(14))
                     .foregroundStyle(Pulse.textSecondary)
@@ -92,12 +92,21 @@ struct MacPlaylistView: View {
         }
     }
 
+    private var showGenre: Bool { playlist.tracks.contains { !$0.genre.isEmpty } }
+
     private var trackTable: some View {
         VStack(spacing: 0) {
+            if !playlist.tracksLoaded {
+                HStack(spacing: 12) {
+                    ProgressDots()
+                    Text("Loading songs…").font(.pulseBody(14)).foregroundStyle(Pulse.textSecondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 120)
+            }
             HStack(spacing: 12) {
                 Text("#").frame(width: 28, alignment: .leading)
                 Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
-                Text("GENRE").frame(width: 130, alignment: .leading)
+                Text(showGenre ? "GENRE" : "ALBUM").frame(width: showGenre ? 130 : 220, alignment: .leading)
                 if playlist.prompt != nil {
                     Text("WHY PULSE PICKED IT").frame(width: 300, alignment: .leading)
                 }
@@ -111,7 +120,7 @@ struct MacPlaylistView: View {
             .padding(.bottom, 6)
 
             ForEach(Array(playlist.tracks.enumerated()), id: \.element.id) { i, track in
-                TrackRow(index: i + 1, track: track, showWhy: playlist.prompt != nil,
+                TrackRow(index: i + 1, track: track, showWhy: playlist.prompt != nil, showGenre: showGenre,
                          isCurrent: player.current.id == track.id, isPlaying: player.isPlaying) {
                     player.play(track, in: playlist)
                 }
@@ -124,6 +133,7 @@ struct TrackRow: View {
     let index: Int
     let track: Track
     let showWhy: Bool
+    var showGenre = true
     let isCurrent: Bool
     let isPlaying: Bool
     let play: () -> Void
@@ -147,17 +157,23 @@ struct TrackRow: View {
                 ArtworkView(artwork: track.artwork, cornerRadius: 8).frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(track.title).font(.pulseBody(15, weight: .semibold))
-                        .foregroundStyle(isCurrent ? Pulse.accent : Pulse.text)
-                    Text(track.artist).font(.pulseBody(13)).foregroundStyle(Pulse.textSecondary)
+                        .foregroundStyle(isCurrent ? Pulse.accent : Pulse.text).lineLimit(1)
+                    Text(track.artist).font(.pulseBody(13)).foregroundStyle(Pulse.textSecondary).lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 6) {
-                Circle().fill(genreColor).frame(width: 8, height: 8)
-                Text(track.genre).font(.pulseBody(13)).foregroundStyle(Color(hex: 0xCDD3D0))
+            if showGenre {
+                HStack(spacing: 6) {
+                    Circle().fill(genreColor).frame(width: 8, height: 8)
+                    Text(track.genre).font(.pulseBody(13)).foregroundStyle(Color(hex: 0xCDD3D0))
+                }
+                .frame(width: 130, alignment: .leading)
+            } else {
+                Text(track.album).font(.pulseBody(13)).foregroundStyle(Color(hex: 0xCDD3D0))
+                    .lineLimit(1)
+                    .frame(width: 220, alignment: .leading)
             }
-            .frame(width: 130, alignment: .leading)
 
             if showWhy {
                 Text(track.why ?? "")
