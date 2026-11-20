@@ -5,8 +5,8 @@
 #     Linux; it has gcc, which -race needs)
 #   * setup-go's cache  ->  a Neutrino cache for Go's module and build caches,
 #     kept in the workspace on atlas's disk
-#   * gofmt checks the repo's .go files, not the whole folder, so the module
-#     cache in the workspace isn't checked too
+#   * gofmt checks the .go files git tracks, not the whole folder, so the
+#     module cache in the workspace isn't checked too
 
 name: CI
 
@@ -33,7 +33,9 @@ jobs:
     steps:
       - name: Check formatting
         run: |
-          unformatted="$(find . -name '*.go' -not -path './.go/*' -print0 | xargs -0 gofmt -l)"
+          # Only the files git tracks: Go's module cache sits in the
+          # workspace (.go/), and third-party code there isn't ours to format.
+          unformatted="$(git -c safe.directory='*' ls-files -z '*.go' | xargs -0 -r gofmt -l)"
           if [ -n "$unformatted" ]; then
             echo "These files are not gofmt-clean:"
             echo "$unformatted"
