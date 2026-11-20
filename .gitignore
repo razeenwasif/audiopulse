@@ -4,3 +4,7 @@
 
 # Reference screenshots (e.g. the Spotify desktop image) — not part of the product
 assets/Screenshot*.png
+
+# Apple apps: build output and the generated Xcode project (regenerate with `xcodegen` in apple/)
+/apple/build/
+/apple/AudioPulse.xcodeproj/

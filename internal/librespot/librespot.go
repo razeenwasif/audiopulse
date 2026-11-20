@@ -2,8 +2,9 @@
 // "AudioPulse" Spotify Connect device. librespot streams and decodes the audio;
 // AudioPulse controls it through the Spotify Web API.
 //
-// Audio is emitted via librespot's ALSA backend, which (on this setup) routes
-// through ~/.asoundrc to PulseAudio. Credentials are cached under the cache dir
+// On Linux, audio is emitted via librespot's ALSA backend, which (on this setup)
+// routes through ~/.asoundrc to PulseAudio. Elsewhere (macOS, Windows) the rodio
+// backend is used, which plays through the native audio stack. Credentials are cached under the cache dir
 // so the interactive device login is a one-time step.
 package librespot
 
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"audiopulse/internal/config"
@@ -70,10 +72,20 @@ func (s *Supervisor) HasCredentials() bool {
 	return err == nil
 }
 
+// audioBackend picks the librespot audio backend for this OS. ALSA only exists
+// on Linux; rodio wraps Core Audio on macOS and WASAPI on Windows. The backend
+// must match the one librespot was compiled with (see `make librespot`).
+func audioBackend() string {
+	if runtime.GOOS == "linux" {
+		return "alsa"
+	}
+	return "rodio"
+}
+
 func (s *Supervisor) baseArgs() []string {
 	return []string{
 		"--name", config.DeviceName,
-		"--backend", "alsa",
+		"--backend", audioBackend(),
 		"--bitrate", "320",
 		"--cache", s.cacheDir,
 		"--disable-audio-cache",
