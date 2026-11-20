@@ -1,0 +1,60 @@
+# audiopulse's .github/workflows/ci.yml, on Neutrino.
+#
+# Changes from the GitHub version:
+#   * ubuntu-latest + setup-go  ->  a golang:1.25 container on Graviton (arm64
+#     Linux; it has gcc, which -race needs)
+#   * setup-go's cache  ->  a Neutrino cache for Go's module and build caches,
+#     kept in the workspace on atlas's disk
+#   * gofmt checks the repo's .go files, not the whole folder, so the module
+#     cache in the workspace isn't checked too
+
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+  workflow_dispatch: {}
+
+env:
+  GOMODCACHE: /workspace/.go/mod
+  GOCACHE: /workspace/.go/build
+  GOFLAGS: -buildvcs=false
+
+jobs:
+  quality:
+    name: Format, vet & test
+    image: golang:1.25
+    resources: { cpus: 4, memory: 4G }
+    timeout-minutes: 20
+    cache:
+      - key: go-quality-${{ hashFiles('go.sum') }}
+        path: .go
+        restore-keys: [go-quality-]
+    steps:
+      - name: Check formatting
+        run: |
+          unformatted="$(find . -name '*.go' -not -path './.go/*' -print0 | xargs -0 gofmt -l)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Vet (silent backend)
+        run: go vet -tags nosound ./...
+      - name: Test (silent backend)
+        run: go test -tags nosound -race ./...
+
+  build-audio:
+    name: Build real audio backend
+    image: golang:1.25
+    resources: { cpus: 4, memory: 4G }
+    timeout-minutes: 20
+    cache:
+      - key: go-audio-${{ hashFiles('go.sum') }}
+        path: .go
+        restore-keys: [go-audio-]
+    steps:
+      - name: Install ALSA headers
+        run: apt-get update && apt-get install -y --no-install-recommends libasound2-dev
+      - name: Build
+        run: go build -o audiopulse .
